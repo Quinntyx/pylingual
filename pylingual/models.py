@@ -116,7 +116,24 @@ class CacheTranslator:
         return results
 
 
-@lru_cache(maxsize=1)
+class VersionedTranslator(CacheTranslator):
+    """A per-version output cache over one shared, unmerged backbone."""
+    def __init__(self, bank, tokenizer, device, version, prefix):
+        super().__init__(bank.model, tokenizer, device)
+        self.bank = bank
+        self.version = version
+        self.prefix = prefix.format(version=version)
+
+    def _translate_and_decode(self, translation_requests, batch_size=32, **kwargs):
+        return super()._translate_and_decode([self.prefix + text for text in translation_requests], batch_size=batch_size, **kwargs)
+
+    def __call__(self, *args, **kwargs):
+        # The output cache and all generation, including retries, share the lock.
+        with self.bank.use(self.version):
+            return super().__call__(*args, **kwargs)
+
+
+@lru_cache(maxsize=32)
 def load_models(
     config_file: Path = Path("pylingual/decompiler_config.yaml"),
     version: PythonVersion = PythonVersion(3.9),
@@ -125,8 +142,18 @@ def load_models(
     logger.info(f"Loading models for {version}...")
     with config_file.open() as f:
         config = yaml.safe_load(f)
-        seg_config = config[f"v{version}"]["SEGMENTATION_MODEL"]
-        stmt_config = config[f"v{version}"]["STATEMENT_MODEL"]
+        shared = config.get("SHARED_BACKBONES")
+        if not shared:
+            seg_config = config[f"v{version}"]["SEGMENTATION_MODEL"]
+            stmt_config = config[f"v{version}"]["STATEMENT_MODEL"]
+
+    if shared:
+        from pylingual.shared_models import load_version
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "mps" if hasattr(torch.backends, "mps") and torch.backends.mps.is_available() else "cpu")
+        root = Path(config_file).resolve().parent
+        segmenter = load_version(root / shared["SEGMENTATION_MODEL"], "segmentation", str(version), device)
+        bank, tokenizer, metadata = load_version(root / shared["STATEMENT_MODEL"], "statement", str(version), device)
+        return segmenter, VersionedTranslator(bank, tokenizer, device, str(version), metadata.get("source_prefix", ""))
 
     #################################
     # Segmentation model components #
