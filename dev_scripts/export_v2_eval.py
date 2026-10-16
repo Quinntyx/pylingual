@@ -7,6 +7,7 @@ from collections import Counter
 from pathlib import Path
 
 from datasets import load_dataset
+from huggingface_hub import HfApi, hf_hub_download
 
 VERSIONS = tuple(f"3.{minor}" for minor in range(6, 15))
 
@@ -26,7 +27,12 @@ def main():
     for task, target, per_file in (("statement", args.statement_rows, 4), ("segmentation", args.segmentation_rows, 1)):
         for version in VERSIONS:
             repo = f"syssec-utd/{task}-py{version.replace('.', '')}-pylingual-v2"
-            dataset = load_dataset(repo, split="test", streaming=True, token=True).shuffle(seed=args.seed, buffer_size=2048)
+            info = HfApi().dataset_info(repo, token=True)
+            parquet_files = [item.rfilename for item in info.siblings if item.rfilename.startswith("data/test-") and item.rfilename.endswith(".parquet")]
+            if not parquet_files:
+                raise ValueError(f"No explicit test parquet files in {repo}")
+            local_files = [hf_hub_download(repo, file, repo_type="dataset", revision=info.sha, token=True) for file in parquet_files]
+            dataset = load_dataset("parquet", data_files={"test": local_files}, split="test", streaming=True).shuffle(seed=args.seed, buffer_size=2048)
             rows = []
             counts = Counter()
             excluded = 0
@@ -48,7 +54,7 @@ def main():
                 raise ValueError(f"Only {len(rows)} file-diverse rows available for {repo}, wanted {target}")
             out = args.output / f"{task}-{version}.jsonl"
             out.write_text("".join(json.dumps(row) + "\n" for row in rows))
-            receipt = {"task": task, "version": version, "repo": repo, "split": "test", "rows": len(rows), "files": len(counts), "excluded_train_hash_matches": excluded, "sha256": hashlib.sha256(out.read_bytes()).hexdigest(), "first_file": rows[0]["file"]}
+            receipt = {"task": task, "version": version, "repo": repo, "split": "test", "revision": info.sha, "rows": len(rows), "files": len(counts), "excluded_train_hash_matches": excluded, "sha256": hashlib.sha256(out.read_bytes()).hexdigest(), "first_file": rows[0]["file"]}
             receipts.append(receipt)
             (args.output / "manifest.json").write_text(json.dumps({"seed": args.seed, "selection": "streaming shuffled test split; per-file cap; source-hash overlap filter", "hash_overlap_limit": "Only hashes exposed by the v2 file column can be checked; upstream canonical-source overlap is not available.", "datasets": receipts}, indent=2) + "\n")
             print(json.dumps(receipt), flush=True)

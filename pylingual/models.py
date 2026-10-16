@@ -45,6 +45,7 @@ class CacheTranslator:
         self.device = device
         self.cache = OrderedDict()
         self.maxsize = maxsize
+        self.input_prefix = ""
         self.model.to(self.device)
 
     def __getitem__(self, item):
@@ -62,7 +63,9 @@ class CacheTranslator:
 
         # process in batches
         for i in range(0, len(translation_requests), batch_size):
-            batch = translation_requests[i: i + batch_size]
+            # TrackedDataset is indexable but does not support slices, and its
+            # iterator is stateful. Indexed access also makes retries replayable.
+            batch = [self.input_prefix + translation_requests[j] for j in range(i, min(i + batch_size, len(translation_requests)))]
             encoded = self.tokenizer(batch, return_tensors= "pt", padding=True).to(self.device)
 
             with torch.no_grad():
@@ -79,18 +82,25 @@ class CacheTranslator:
     def _translate_with_backoff(self, translation_requests: TrackedDataset) -> list[str]:
         try:
             return self._translate_and_decode(translation_requests, batch_size=32)
+        except TimeoutError:
+            raise
         except Exception as e:
             logger.info(f"Lowering translation batch size ({e})")
         # Try with batch_size = 1 if normal translation fails:
         try:
             return self._translate_and_decode(translation_requests, batch_size=1)
+        except TimeoutError:
+            raise
         except Exception as e:
             logger.info(f"Lowering translation batch size ({e})")
         translation_results = []
         # try one-by-one if batch_size=1 fails
-        for request in translation_requests:
+        for index in range(len(translation_requests)):
+            request = translation_requests[index]
             try:
                 translation_results.append(self._translate_and_decode([request], batch_size=1)[0])
+            except TimeoutError:
+                raise
             except Exception:
                 # last resort fallback
                 translation_results.append("'''Decompiler error: line too long for translation. Please decompile this statement manually.'''")
@@ -118,14 +128,11 @@ class CacheTranslator:
 
 class VersionedTranslator(CacheTranslator):
     """A per-version output cache over one shared, unmerged backbone."""
-    def __init__(self, bank, tokenizer, device, version, prefix):
+    def __init__(self, bank, tokenizer, device, version, prefix, use_adapter=True):
         super().__init__(bank.model, tokenizer, device)
         self.bank = bank
-        self.version = version
-        self.prefix = prefix.format(version=version)
-
-    def _translate_and_decode(self, translation_requests, batch_size=32, **kwargs):
-        return super()._translate_and_decode([self.prefix + text for text in translation_requests], batch_size=batch_size, **kwargs)
+        self.version = version if use_adapter else None
+        self.input_prefix = prefix.format(version=version)
 
     def __call__(self, *args, **kwargs):
         # The output cache and all generation, including retries, share the lock.
@@ -133,7 +140,7 @@ class VersionedTranslator(CacheTranslator):
             return super().__call__(*args, **kwargs)
 
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=1)
 def load_models(
     config_file: Path = Path("pylingual/decompiler_config.yaml"),
     version: PythonVersion = PythonVersion(3.9),
@@ -142,18 +149,36 @@ def load_models(
     logger.info(f"Loading models for {version}...")
     with config_file.open() as f:
         config = yaml.safe_load(f)
-        shared = config.get("SHARED_BACKBONES")
-        if not shared:
-            seg_config = config[f"v{version}"]["SEGMENTATION_MODEL"]
-            stmt_config = config[f"v{version}"]["STATEMENT_MODEL"]
+        shared = config.get("SHARED_BACKBONES", {})
+        legacy = config.get(f"v{version}", {})
 
-    if shared:
-        from pylingual.shared_models import load_version
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "mps" if hasattr(torch.backends, "mps") and torch.backends.mps.is_available() else "cpu")
-        root = Path(config_file).resolve().parent
-        segmenter = load_version(root / shared["SEGMENTATION_MODEL"], "segmentation", str(version), device)
-        bank, tokenizer, metadata = load_version(root / shared["STATEMENT_MODEL"], "statement", str(version), device)
-        return segmenter, VersionedTranslator(bank, tokenizer, device, str(version), metadata.get("source_prefix", ""))
+    from pylingual.shared_models import load_family, load_version
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "mps" if hasattr(torch.backends, "mps") and torch.backends.mps.is_available() else "cpu")
+    root = Path(config_file).resolve().parent
+    use_adapters = shared.get("USE_ADAPTERS", True)
+    if "SEGMENTATION_MODEL" in shared:
+        if use_adapters:
+            segmenter = load_version(root / shared["SEGMENTATION_MODEL"], "segmentation", str(version), device)
+        else:
+            from pylingual.lora import VersionedPipeline
+            bank, _, _, pipeline = load_family(root / shared["SEGMENTATION_MODEL"], "segmentation", device)
+            segmenter = VersionedPipeline(pipeline, bank, None)
+    else:
+        seg_config = legacy["SEGMENTATION_MODEL"]
+        segmenter = _load_legacy_segmenter(seg_config, device, token)
+    if "STATEMENT_MODEL" in shared:
+        if use_adapters:
+            bank, tokenizer, metadata = load_version(root / shared["STATEMENT_MODEL"], "statement", str(version), device)
+        else:
+            bank, tokenizer, metadata, _ = load_family(root / shared["STATEMENT_MODEL"], "statement", device)
+        return segmenter, VersionedTranslator(bank, tokenizer, device, str(version), metadata.get("source_prefix", ""), use_adapter=use_adapters)
+    stmt_config = legacy["STATEMENT_MODEL"]
+    translation_model = transformers.T5ForConditionalGeneration.from_pretrained(stmt_config["REPO"], revision=stmt_config["REVISION"], token=token)
+    translation_tokenizer = transformers.RobertaTokenizer.from_pretrained(stmt_config["TOKENIZER"], token=token)
+    return segmenter, CacheTranslator(translation_model, translation_tokenizer, device)
+
+
+def _load_legacy_segmenter(seg_config, device, token):
 
     #################################
     # Segmentation model components #
@@ -172,26 +197,10 @@ def load_models(
         sep_token="[SEP]",
         mask_token="[MASK]",
     )
-    if torch.cuda.is_available():
-        logger.info("Using CUDA GPU for models")
-        device = torch.device("cuda:0")
-    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        logger.info("Using MPS (Metal Performance Shaders) GPU for models")
-        device = torch.device("mps")
-    else:
-        logger.warning("Using CPU for models")
-        device = torch.device("cpu")
-    segmenter = transformers.pipeline(
+    return transformers.pipeline(
         "token-classification",
         model=segmentation_model,
         tokenizer=segmentation_tokenizer,
         aggregation_strategy="none",
         device=device,
     )
-    #########################################
-    # Sequence translation model components #
-    #########################################
-    translation_model = transformers.T5ForConditionalGeneration.from_pretrained(stmt_config["REPO"], revision=stmt_config["REVISION"], token=token)
-    translation_tokenizer = transformers.RobertaTokenizer.from_pretrained(stmt_config["TOKENIZER"], token=token)
-
-    return segmenter, CacheTranslator(translation_model, translation_tokenizer, device)

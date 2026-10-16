@@ -33,7 +33,7 @@ def _compile_native(py_file: str, out_file: str):
 
 
 def _compile_uv(py_file: str, out_file: str, version: PythonVersion):
-    compile_cmd = f"import py_compile, sys; assert sys.version_info[:2] == {version.as_tuple()!r}; py_compile.compile({py_file!r}, cfile={out_file!r})"
+    compile_cmd = f"import py_compile, sys; assert sys.version_info[:2] == {version.as_tuple()!r}; py_compile.compile({py_file!r}, cfile={out_file!r}, doraise=True)"
 
     cmd = ["uvx", "--no-config", "--python", version.as_str(), "python", "-c", compile_cmd]
 
@@ -43,8 +43,13 @@ def _compile_uv(py_file: str, out_file: str, version: PythonVersion):
     stderr = re.sub(r"\s*Download(ing|ed)\s.+\n", "", output.stderr)
     # Ignore stderr messages from uv logging that compilation occurred
     stderr = re.sub(r"\s*Bytecode compiled \d+ files? in \d+ms\n", "", stderr)
-    if stderr:
-        raise CompileError(stderr)
+    # uv can warn about a prerelease interpreter even when compilation succeeds.
+    # Such warnings must not turn every 3.15 verification into a false failure.
+    if output.returncode != 0:
+        # Keep only the source diagnostic, not the compiler wrapper traceback:
+        # error correction interprets the first reported line as a source line.
+        stderr = stderr.rsplit("py_compile.PyCompileError: ", 1)[-1]
+        raise CompileError(stderr or output.stdout or f"Compiler exited with status {output.returncode}")
 
 
 def _compile_pyenv(py_file: str, out_file: str, version: PythonVersion):

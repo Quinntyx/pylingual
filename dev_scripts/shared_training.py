@@ -19,7 +19,7 @@ from pathlib import Path
 import torch
 from transformers import AutoModelForTokenClassification, AutoTokenizer, PreTrainedTokenizerFast, T5ForConditionalGeneration
 from huggingface_hub import hf_hub_download
-from tokenizers import Tokenizer
+from tokenizers import Tokenizer, decoders, models, pre_tokenizers, processors
 
 from pylingual.lora import AdapterBank
 
@@ -34,6 +34,20 @@ def read_rows(path):
 
 def source_prefix(version):
     return f"Python {version}: "
+
+
+def load_statement_tokenizer(repo):
+    if not repo.startswith("Salesforce/codet5"):
+        return AutoTokenizer.from_pretrained(repo)
+    # Legacy CodeT5 Hub metadata stores AddedTokens as dictionaries. Construct
+    # its byte-level BPE explicitly; this also works with Transformers 5.
+    vocab = hf_hub_download(repo, "vocab.json")
+    merges = hf_hub_download(repo, "merges.txt")
+    backend = Tokenizer(models.BPE.from_file(vocab, merges, unk_token="<unk>"))
+    backend.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
+    backend.decoder = decoders.ByteLevel()
+    backend.post_processor = processors.RobertaProcessing(sep=("</s>", backend.token_to_id("</s>")), cls=("<s>", backend.token_to_id("<s>")), add_prefix_space=False)
+    return PreTrainedTokenizerFast(tokenizer_object=backend, bos_token="<s>", eos_token="</s>", unk_token="<unk>", sep_token="</s>", pad_token="<pad>", cls_token="<s>", mask_token="<mask>", additional_special_tokens=[f"<extra_id_{i}>" for i in range(100)], model_max_length=512)
 
 
 def load_seg_tokenizer(repo):
@@ -90,7 +104,7 @@ def collate(rows, tokenizer, device):
     }
 
 
-def grouped_examples(task, tokenizer, rows):
+def grouped_examples(task, tokenizer, rows, versions=VERSIONS):
     grouped = defaultdict(lambda: defaultdict(list))
     dropped = defaultdict(int)
     for row in rows:
@@ -99,8 +113,8 @@ def grouped_examples(task, tokenizer, rows):
             dropped[row["version"]] += 1
         else:
             grouped[row["version"]][row["file"]].append(encoded)
-    if set(grouped) != set(VERSIONS):
-        raise ValueError(f"Missing training versions: {set(VERSIONS) - set(grouped)}")
+    if set(grouped) != set(versions):
+        raise ValueError(f"Training versions differ: expected {set(versions)}, got {set(grouped)}")
     return {v: list(files.values()) for v, files in grouped.items()}, dict(dropped)
 
 
@@ -147,15 +161,26 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--task", choices=("statement", "segmentation"), required=True)
     parser.add_argument("--statement-init", default="Salesforce/codet5-base")
+    parser.add_argument("--statement-tokenizer", help="Separate tokenizer path when continuing from a saved backbone")
     parser.add_argument("--segmentation-init", default="syssec-utd/py39-pylingual-v1-segmenter")
     parser.add_argument("--segmentation-tokenizer", default="syssec-utd/py39-pylingual-v1-tokenizer")
     parser.add_argument("--steps", type=int, default=600)
     parser.add_argument("--adapter-steps", type=int, default=60)
+    parser.add_argument("--adapter-versions", nargs="+", default=["3.14", "3.15"], help="Only these adapters are trained, independently of backbone versions")
+    parser.add_argument("--adapter-data", type=Path, help="Additional adapter-only data directory; never used to update backbone or tokenizer")
+    parser.add_argument("--backbone-lineage", type=Path, help="Family metadata of a previously trained unwrapped backbone")
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--accumulation", type=int, default=2)
     parser.add_argument("--rank", type=int, default=8)
     parser.add_argument("--seed", type=int, default=20261016)
     args = parser.parse_args()
+    adapter_versions = tuple(args.adapter_versions)
+    if not adapter_versions or len(set(adapter_versions)) != len(adapter_versions) or any(v not in tuple(f"3.{minor}" for minor in range(6, 16)) for v in adapter_versions):
+        raise ValueError("Adapter versions must be unique supported Python versions")
+    if args.steps < 0 or args.adapter_steps < 1 or min(args.batch_size, args.accumulation, args.rank) < 1:
+        raise ValueError("Steps must be nonnegative, with positive adapter steps, batch size, accumulation and rank")
+    if "3.15" in adapter_versions and args.adapter_data is None:
+        parser.error("--adapter-data is required for the held-out 3.15 adapter")
     torch.manual_seed(args.seed)
     torch.set_num_threads(4)
     if not torch.cuda.is_available():
@@ -171,7 +196,7 @@ def main():
     if len(set(quotas)) != 1:
         raise ValueError("Training file counts are not version-balanced")
     if args.task == "statement":
-        tokenizer = AutoTokenizer.from_pretrained(args.statement_init)
+        tokenizer = load_statement_tokenizer(args.statement_tokenizer or args.statement_init)
         if args.statement_init.startswith("Salesforce/codet5"):
             tokenizer.add_tokens([f"<mask_{i}>" for i in range(300)])
         model = T5ForConditionalGeneration.from_pretrained(args.statement_init)
@@ -198,7 +223,10 @@ def main():
     model.config.use_cache = False
     grouped, dropped = grouped_examples(args.task, tokenizer, rows)
     backbone_id = str(uuid.uuid4())
-    family = {"format": 1, "task": args.task, "backbone_id": backbone_id, "versions": VERSIONS, "targets": targets, "source_prefix": "Python {version}: " if args.task == "statement" else "", "initial_model": initial, "data_manifest_sha256": hashlib.sha256((args.data / "manifest.json").read_bytes()).hexdigest(), "arguments": {k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()}, "dropped_long_training_rows": dropped, "encoded_files_per_version": {v: len(files) for v, files in grouped.items()}, "encoded_rows_per_version": {v: sum(map(len, files)) for v, files in grouped.items()}}
+    family = {"format": 1, "task": args.task, "backbone_id": backbone_id, "versions": adapter_versions, "backbone_training_versions": VERSIONS, "adapter_training_versions": adapter_versions, "targets": targets, "source_prefix": "Python {version}: " if args.task == "statement" else "", "initial_model": initial, "data_manifest_sha256": hashlib.sha256((args.data / "manifest.json").read_bytes()).hexdigest(), "arguments": {k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()}, "dropped_long_training_rows": dropped, "encoded_files_per_version": {v: len(files) for v, files in grouped.items()}, "encoded_rows_per_version": {v: sum(map(len, files)) for v, files in grouped.items()}}
+    if args.backbone_lineage:
+        family["backbone_lineage"] = json.loads(args.backbone_lineage.read_text())
+        family["backbone_lineage_sha256"] = hashlib.sha256(args.backbone_lineage.read_bytes()).hexdigest()
     parameters = list(model.parameters())
     family["backbone_parameters"] = sum(p.numel() for p in parameters)
     print(json.dumps({"task": args.task, "parameters": family["backbone_parameters"], "encoded_rows": family["encoded_rows_per_version"]}), flush=True)
@@ -208,15 +236,28 @@ def main():
     model.save_pretrained(args.output / "backbone")
     tokenizer.save_pretrained(args.output / "tokenizer")
     del parameters
+    # Adaptation data is read only AFTER the immutable backbone/tokenizer are
+    # saved. In particular, held-out 3.15 opcodes never extend their vocabulary.
+    adapter_rows = [row for row in rows if row["version"] in adapter_versions]
+    if args.adapter_data:
+        extra = read_rows(args.adapter_data / f"{args.task}-train.jsonl")
+        if any(row["version"] not in adapter_versions or row["version"] in VERSIONS for row in extra):
+            raise ValueError("Additional adapter data must contain only requested versions excluded from backbone training")
+        adapter_rows.extend(extra)
+        family["adapter_data_manifest_sha256"] = hashlib.sha256((args.adapter_data / "manifest.json").read_bytes()).hexdigest()
+    adapter_grouped, adapter_dropped = grouped_examples(args.task, tokenizer, adapter_rows, adapter_versions)
+    family["adapter_dropped_long_rows"] = adapter_dropped
+    family["adapter_files_per_version"] = {v: len(files) for v, files in adapter_grouped.items()}
+    family["adapter_input_tokens"] = {v: {"unknown": sum(row["input_ids"].count(tokenizer.unk_token_id) for file in files for row in file), "total": sum(len(row["input_ids"]) for file in files for row in file)} for v, files in adapter_grouped.items()}
     bank = AdapterBank(model, backbone_id, targets)
     family["adapters"] = {}
     family["adapter_training"] = {}
-    for index, version in enumerate(VERSIONS):
+    for index, version in enumerate(adapter_versions):
         print(f"Training {args.task} adapter for Python {version}", flush=True)
         bank.add(version, rank=args.rank, alpha=2 * args.rank, dropout=0.05)
         params = bank.trainable(version)
         model.config.use_cache = False
-        family["adapter_training"][version] = train_steps(model, tokenizer, grouped, (version,), args.adapter_steps, args.batch_size, args.accumulation, 3e-4, args.seed + index, params)
+        family["adapter_training"][version] = train_steps(model, tokenizer, adapter_grouped, (version,), args.adapter_steps, args.batch_size, args.accumulation, 3e-4, args.seed + index, params)
         directory = args.output / "adapters" / version
         bank.save(version, directory)
         family["adapters"][version] = f"adapters/{version}"

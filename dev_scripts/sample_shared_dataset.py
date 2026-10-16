@@ -60,18 +60,22 @@ def main():
     parser.add_argument("--train-files", type=int, default=64)
     parser.add_argument("--validation-files", type=int, default=16)
     parser.add_argument("--seed", type=int, default=20261016)
+    parser.add_argument("--versions", nargs="+", default=list(VERSIONS), help="Explicit target versions; default excludes 3.15. Adapter data may target 3.15 separately.")
     args = parser.parse_args()
+    versions = tuple(args.versions)
+    if not versions or len(set(versions)) != len(versions) or any(v not in tuple(f"3.{minor}" for minor in range(6, 16)) for v in versions):
+        raise ValueError("Versions must be unique supported versions from 3.6 through 3.15")
     if args.output.exists():
         raise FileExistsError(f"Refusing to overwrite {args.output}")
     args.output.mkdir(parents=True)
     rng = random.Random(args.seed)
-    interpreters = {v: interpreter(v) for v in VERSIONS}
+    interpreters = {v: interpreter(v) for v in versions}
     # A script file works under every target version; no package import/execution.
     compiler = args.output / "compile_source.py"
     compiler.write_text("import py_compile,sys\npy_compile.compile(sys.argv[1],cfile=sys.argv[2],doraise=True,optimize=0)\n")
     archives = sorted(p for directory in args.archives.iterdir() if directory.is_dir() for p in directory.iterdir() if p.is_file())
     rng.shuffle(archives)
-    counts = {v: Counter() for v in VERSIONS}
+    counts = {v: Counter() for v in versions}
     wanted = {"train": args.train_files, "validation": args.validation_files}
     seen = set()
     failures = Counter()
@@ -79,7 +83,7 @@ def main():
     handles = {(task, split): (args.output / f"{task}-{split}.jsonl").open("w") for task in ("statement", "segmentation") for split in wanted}
     try:
         for archive in archives:
-            if all(counts[v][split] == wanted[split] for v in VERSIONS for split in wanted):
+            if all(counts[v][split] == wanted[split] for v in versions for split in wanted):
                 break
             try:
                 members = list(source_members(archive))
@@ -102,7 +106,7 @@ def main():
                     failures[type(exc).__name__] += 1
                     continue
                 split = "validation" if int(canonical_hash[:8], 16) % 5 == 0 else "train"
-                for version in VERSIONS:
+                for version in versions:
                     if counts[version][split] >= wanted[split]:
                         continue
                     minor = int(version.split(".")[1])
@@ -141,15 +145,15 @@ def main():
                         failures[f"{version}:{type(exc).__name__}"] += 1
                 if len(files) % 36 == 0:
                     print(json.dumps({"files": len(files), "counts": counts}), flush=True)
-                if all(counts[v][s] == wanted[s] for v in VERSIONS for s in wanted):
+                if all(counts[v][s] == wanted[s] for v in versions for s in wanted):
                     break
     finally:
         for handle in handles.values():
             handle.close()
-    manifest = {"seed": args.seed, "archives": str(args.archives.resolve()), "versions": VERSIONS, "excluded_versions": ["3.15"], "requested_files_per_version": wanted, "counts": counts, "failures": failures, "files": files}
+    manifest = {"seed": args.seed, "archives": str(args.archives.resolve()), "versions": versions, "excluded_versions": [v for v in ("3.15",) if v not in versions], "requested_files_per_version": wanted, "counts": counts, "failures": failures, "files": files}
     (args.output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(json.dumps({"counts": counts, "failures": failures}), flush=True)
-    if any(counts[v][s] != wanted[s] for v in VERSIONS for s in wanted):
+    if any(counts[v][s] != wanted[s] for v in versions for s in wanted):
         raise RuntimeError("Insufficient successful files for exact per-version quotas")
 
 
