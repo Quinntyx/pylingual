@@ -1,4 +1,8 @@
-"""Export reproducible, file-diverse v2 TEST rows, never train/validation rows."""
+"""Export file-diverse TEST rows from HF model datasets, not the v2 .pyc benchmark.
+
+These similarly named Hugging Face datasets are useful for component checks only.
+Use evaluate_shared.py with pylingual_eval_dataset for v2 whole-file accuracy.
+"""
 import argparse
 import hashlib
 import json

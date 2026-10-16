@@ -1,0 +1,229 @@
+{
+  "protocol": {
+    "date": "2026-10-16",
+    "implementation_commit": "7dc4acf",
+    "seed": 20261016,
+    "scraper_run": "2026-07-02-14",
+    "backbone_versions": [
+      "3.6",
+      "3.7",
+      "3.8",
+      "3.9",
+      "3.10",
+      "3.11",
+      "3.12",
+      "3.13",
+      "3.14"
+    ],
+    "adapter_versions": [
+      "3.14",
+      "3.15"
+    ],
+    "files_per_version": {
+      "train": 64,
+      "validation": 16
+    },
+    "training_unique_sources": 101,
+    "validation_unique_sources": 23,
+    "initial_statement_model": "Salesforce/codet5-base",
+    "initial_segmentation_model": "syssec-utd/py39-pylingual-v1-segmenter",
+    "backbone_updates": {
+      "statement": 6000,
+      "segmentation": 1150
+    },
+    "adapter_updates_per_version": 600,
+    "lora_rank": 8,
+    "lora_alpha": 16,
+    "dataset_commit": "c0226b218dbbd8b76511e69e4ff601cab3caeb71",
+    "evaluation_files_per_version": 8,
+    "timeout_seconds": 30,
+    "reference_revisions": {
+      "syssec-utd/py314-pylingual-v4-statement": "bd17a40d3fdf63ab648c395ee38b39bdb5249191",
+      "syssec-utd/py314-pylingual-v4-segmenter": "c744aaac26d1fda76cb676048fa085001447c708",
+      "syssec-utd/py315-pylingual-v2-statement": "c5d1d0013f1b00851f1eafbe5e28546234030db2",
+      "syssec-utd/py315-pylingual-v2-segmenter": "12cc39da6dfa758d00db39775680b4e610f4bd55"
+    },
+    "model_weight_bytes_float32": {
+      "specialists_two_versions": 2652579864,
+      "shared_two_versions": 1338215436,
+      "ratio": 1.9821770042712314,
+      "adapter_per_version_both_tasks": 4718592
+    },
+    "training_finished": true,
+    "only_final_ablation_families_are_evaluated": true
+  },
+  "whole_file": {
+    "baseline": {
+      "3.14": {
+        "files": 8,
+        "equal_files": 3,
+        "file_accuracy": 0.375,
+        "categories": {
+          "Equal": 3,
+          "CompileError": 3,
+          "Different": 2
+        },
+        "seconds": 44.765
+      },
+      "3.15": {
+        "files": 8,
+        "equal_files": 0,
+        "file_accuracy": 0.0,
+        "categories": {
+          "CompileError": 4,
+          "Different": 2,
+          "Timeout": 2
+        },
+        "seconds": 109.154
+      }
+    },
+    "no-adapter": {
+      "3.14": {
+        "files": 8,
+        "equal_files": 0,
+        "file_accuracy": 0.0,
+        "categories": {
+          "CompileError": 7,
+          "Timeout": 1
+        },
+        "seconds": 75.637
+      },
+      "3.15": {
+        "files": 8,
+        "equal_files": 0,
+        "file_accuracy": 0.0,
+        "categories": {
+          "CompileError": 5,
+          "Different": 1,
+          "Timeout": 2
+        },
+        "seconds": 125.147
+      }
+    },
+    "statement": {
+      "3.14": {
+        "files": 8,
+        "equal_files": 0,
+        "file_accuracy": 0.0,
+        "categories": {
+          "CompileError": 7,
+          "Timeout": 1
+        },
+        "seconds": 79.384
+      },
+      "3.15": {
+        "files": 8,
+        "equal_files": 0,
+        "file_accuracy": 0.0,
+        "categories": {
+          "CompileError": 4,
+          "Different": 1,
+          "Timeout": 3
+        },
+        "seconds": 130.819
+      }
+    },
+    "full-shared": {
+      "3.14": {
+        "files": 8,
+        "equal_files": 0,
+        "file_accuracy": 0.0,
+        "categories": {
+          "CompileError": 8
+        },
+        "seconds": 65.084
+      },
+      "3.15": {
+        "files": 8,
+        "equal_files": 0,
+        "file_accuracy": 0.0,
+        "categories": {
+          "CompileError": 5,
+          "Different": 1,
+          "Timeout": 2
+        },
+        "seconds": 132.073
+      }
+    }
+  },
+  "components": {
+    "no-adapter": {
+      "statement": {
+        "3.14": {
+          "examples": 64,
+          "exact": 54,
+          "exact_match": 0.84375
+        },
+        "3.15": {
+          "examples": 64,
+          "exact": 51,
+          "exact_match": 0.796875
+        }
+      },
+      "segmentation": {
+        "3.14": {
+          "examples": 64,
+          "tokens": 13782,
+          "correct": 12959,
+          "token_accuracy": 0.940284428965317,
+          "boundary_tp": 1838,
+          "boundary_fp": 178,
+          "boundary_fn": 451,
+          "boundary_f1": 0.853890824622532
+        },
+        "3.15": {
+          "examples": 64,
+          "tokens": 14296,
+          "correct": 13237,
+          "token_accuracy": 0.925923335198657,
+          "boundary_tp": 1854,
+          "boundary_fp": 358,
+          "boundary_fn": 512,
+          "boundary_f1": 0.8099606815203145
+        }
+      }
+    },
+    "full-shared": {
+      "statement": {
+        "3.14": {
+          "examples": 64,
+          "exact": 54,
+          "exact_match": 0.84375
+        },
+        "3.15": {
+          "examples": 64,
+          "exact": 51,
+          "exact_match": 0.796875
+        }
+      },
+      "segmentation": {
+        "3.14": {
+          "examples": 64,
+          "tokens": 13782,
+          "correct": 12956,
+          "token_accuracy": 0.9400667537367581,
+          "boundary_tp": 1817,
+          "boundary_fp": 152,
+          "boundary_fn": 472,
+          "boundary_f1": 0.8534523250352278
+        },
+        "3.15": {
+          "examples": 64,
+          "tokens": 14296,
+          "correct": 13362,
+          "token_accuracy": 0.9346670397313934,
+          "boundary_tp": 1995,
+          "boundary_fp": 384,
+          "boundary_fn": 371,
+          "boundary_f1": 0.8408851422550052
+        }
+      }
+    }
+  },
+  "configuration_labels": {
+    "baseline": "Deployed version specialists",
+    "no-adapter": "Shared translator, no LoRA; deployed segmenter",
+    "statement": "Shared translator + LoRA; deployed segmenter",
+    "full-shared": "Shared translator + segmenter, both with LoRA"
+  }
+}

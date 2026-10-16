@@ -177,3 +177,10 @@ checkpoint/compatibility guards, concurrent lazy pipeline selection, real tiny T
 generation and RoBERTa training, generation retries/deadlines, shared/legacy routing,
 no-LoRA version prefixes, rejection of 3.15 in default backbone data groups, and
 compiler success/failure/diagnostic handling for prerelease Python interpreters.
+
+## First pilot results
+
+The [2026-10-16 v1 report](experiments/shared-v1-2026-10-16.md) records the exact
+protocol, component checks, strict v2 file outcomes, and model-weight footprint.
+The architecture saves weight memory, but this deliberately tiny run does not
+match deployed 3.14 whole-file accuracy. It is not a production replacement.
