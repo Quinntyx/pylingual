@@ -288,6 +288,12 @@ class EditableBytecode:
                     is_jump_target=False,
                     has_extended_arg=False,
                 )
+                # Short-circuit/ternary type expressions can jump directly to COPY 2.
+                # Replacing the list entry alone leaves those jumps pointing at an
+                # instruction which will never be inserted into the parent stream.
+                for inline_inst in inlinable_insts:
+                    if inline_inst.is_jump and inline_inst.target is copy_annotations_inst:
+                        inline_inst._target = load_global_annotations
                 inlinable_insts[-3] = load_global_annotations
 
                 conditional_annotation_map[annotation_identifier] = inlinable_insts

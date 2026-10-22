@@ -26,3 +26,39 @@ class NativeCodeObjectCompatibilityTests(unittest.TestCase):
                     rebuilt = nested.to_code(no_lnotab=True)
                     self.assertEqual(rebuilt.co_nlocals,len(rebuilt.co_varnames))
                 self.assertIsNotNone(create_global_masker(bytecode))
+
+
+class AnnotationInliningJumpTests(unittest.TestCase):
+    def test_inlined_annotation_branches_target_replacement_instructions(self):
+        import base64
+        import json
+        from pathlib import Path
+        from pylingual.editable_bytecode import PYCFile
+
+        fixture = json.loads((Path(__file__).parent / 'fixtures/annotation_branches_314.json').read_text())
+        bytecode = PYCFile(base64.b64decode(fixture['pyc_b64']))
+        self.assertEqual(tuple(bytecode.version)[:2], (3, 14))
+        for stage in ('loaded', 'duplicated_returns'):
+            if stage == 'duplicated_returns':
+                bytecode.replace_duplicated_returns12(fixture['source'].split('\n'))
+            for nested in bytecode.iter_bytecodes():
+                for instruction in nested.instructions:
+                    if instruction.is_jump:
+                        self.assertTrue(any(target is instruction.target for target in nested.instructions),
+                                        f'{stage} {nested.name}: {instruction!r} targets a removed instruction')
+        self.assertIsNotNone(create_global_masker(bytecode))
+
+    @unittest.expectedFailure
+    def test_upstream_ternary_annotation_branch_limitation(self):
+        # Separate pre-existing upstream limitation: do not disguise it by dropping
+        # the broader fixture or claim the short-circuit repair fixes ternaries.
+        import base64
+        import json
+        from pathlib import Path
+        from pylingual.editable_bytecode import PYCFile
+        fixture = json.loads((Path(__file__).parent / 'fixtures/annotation_ternary_314.json').read_text())
+        bytecode = PYCFile(base64.b64decode(fixture['pyc_b64']))
+        for nested in bytecode.iter_bytecodes():
+            for instruction in nested.instructions:
+                if instruction.is_jump:
+                    self.assertTrue(any(target is instruction.target for target in nested.instructions))
