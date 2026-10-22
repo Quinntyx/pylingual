@@ -41,7 +41,6 @@ def train_statement_model(config: StatementConfiguration, public: bool = False):
         per_device_eval_batch_size=config.statement_training_parameters.batch_size,
         weight_decay=0.01,
         fp16=config.fp16,
-        logging_dir=str(config.log_dir),
         report_to="tensorboard",
         logging_strategy="steps",
         logging_steps=1000,
@@ -63,14 +62,14 @@ def train_statement_model(config: StatementConfiguration, public: bool = False):
         args=train_args,
         data_collator=data_collator,
         train_dataset=tokenized_train_dataset,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
     )
 
     start = time.time()
     trainer.train()
     duration = str(timedelta(seconds=time.time() - start))
 
-    if int(os.environ["LOCAL_RANK"]) == 0:
+    if int(os.environ.get("LOCAL_RANK", "0")) == 0:
         # upload the latest version of the model to the Model Hub on Huggingface
         trainer.save_model(str(config.statement_model_dir))
         # this command returns the URL of the commit it just did

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from xdis import Code3
 
-Code3.__eq__ = (
-    lambda self, o: isinstance(o, Code3)
+Code3.__eq__ = lambda self, o: (
+    isinstance(o, Code3)
     and self.co_argcount == o.co_argcount
     and self.co_nlocals == o.co_nlocals
     and self.co_flags == o.co_flags
@@ -19,11 +19,12 @@ Code3.__eq__ = (
     and self.co_cellvars == o.co_cellvars
     and self.co_kwonlyargcount == o.co_kwonlyargcount
 )
-Code3.__hash__ = lambda self: hash(self.co_code)
+Code3.__hash__ = lambda self: hash((self.co_code, self.co_name, self.co_firstlineno))
 
 import datetime
 import functools
 import importlib.resources
+import io
 import itertools
 import logging
 import re
@@ -31,6 +32,7 @@ import tempfile
 import sys
 import shutil
 import time
+import tokenize
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -40,10 +42,11 @@ from xdis.magics import magicint2version
 from pylingual.control_flow_reconstruction.source import SourceContext, SourceLine
 from pylingual.control_flow_reconstruction.structure import bc_to_cft
 from pylingual.control_flow_reconstruction.cft import MetaTemplate
-from pylingual.equivalence_check import TestResult, compare_pyc
+from pylingual.equivalence_check import PatchedPYC, TestResult, compare_pyc
 from pylingual.models import CacheTranslator, load_models
 from pylingual.utils.generate_bytecode import CompileError, PyenvError, compile_version
 from pylingual.masking.model_disasm import create_global_masker, restore_masked_source_text
+from pylingual.preprocessor import Preprocessor
 from pylingual.editable_bytecode import PYCFile
 from pylingual.segmentation.segmentation_search_strategies import get_top_k_predictions, m_deep_top_k, naive_confidence_priority, filter_subwords
 from pylingual.segmentation.sliding_window import merge, sliding_window
@@ -63,6 +66,22 @@ lno_regex = re.compile(r"(?<=line )\d+")
 
 def has_comp_error(results: list[TestResult]) -> bool:
     return bool(results) and isinstance(results[0], Exception)
+
+
+# an unclosed bracket makes python report the next statement, so find the line that opened it
+def unclosed_bracket_line(source: str, lno: int) -> int | None:
+    stack = []
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(source).readline):
+            if tok.start[0] >= lno:
+                break
+            if tok.type == tokenize.OP and tok.string in "([{":
+                stack.append(tok.start[0])
+            elif tok.type == tokenize.OP and tok.string in ")]}" and stack:
+                stack.pop()
+    except (tokenize.TokenError, SyntaxError):
+        pass
+    return stack[0] if stack else None
 
 
 @dataclass
@@ -102,7 +121,6 @@ class Decompiler:
 
     def __init__(self, pyc: PYCFile, segmenter: transformers.Pipeline, translator: CacheTranslator, version: PythonVersion, top_k=10, trust_lnotab=False, timeout=None):
         self.pyc = pyc
-        self.pyc.copy()
         self.name = pyc.pyc_path.name if pyc.pyc_path is not None else repr(pyc)
         self.segmenter = segmenter
         self.translator = translator
@@ -113,6 +131,8 @@ class Decompiler:
         self.trust_lnotab = trust_lnotab
         self.timeout = timeout
         self.start_time = time.time()
+        self.unmask_cache = {}
+        self.unmask_cache_size = None
 
     def check_timeout(self):
         if self.timeout is not None and time.time() - self.start_time > self.timeout:
@@ -122,6 +142,8 @@ class Decompiler:
         with tempfile.TemporaryDirectory() as tmp:
             self.tmp = Path(tmp)
 
+            self.preprocess_bytecode()
+            self.check_timeout()
             self.mask_bytecode()
             self.check_timeout()
             self.run_segmentation()
@@ -151,9 +173,12 @@ class Decompiler:
         lno = lno_regex.search(str(results[0]))
         if lno is None:
             return None
-        lno = int(lno.group(0)) - 1
-        # get offending codeobj
-        bad_codeobj = self.source_context.source_lines()[lno].blame
+        lno = int(lno.group(0))
+        lno = unclosed_bracket_line(str(self.source_context), lno) or lno
+        # get offending codeobj, counting physical lines since unmasked strings can span several
+        source_lines = self.source_context.source_lines()
+        ends = itertools.accumulate(x.line.count("\n") + 1 for x in source_lines)
+        bad_codeobj = source_lines[next((i for i, end in enumerate(ends) if end >= lno), len(source_lines) - 1)].blame
 
         bad_idx = next(i for i, e in enumerate(self.ordered_bytecodes) if e.codeobj == bad_codeobj)
         return bad_idx
@@ -169,7 +194,7 @@ class Decompiler:
                 if not self.correct_segmentation(bad_idx, from_comp_error=True):
                     return
                 corrected_comp_errors.add(bad_idx)
-            failed = TrackedList(CORRECTION_STEP, [i for i, bc in enumerate(self.ordered_bytecodes) if any(not result.success and getattr(result, "bc_a", None) is not None and result.bc_a.codeobj == bc.codeobj for result in self.equivalence_results)])
+            failed = TrackedList(CORRECTION_STEP, [i for i in range(len(self.ordered_bytecodes)) if (result := self.result_for_bytecode(i, self.equivalence_results)) is not None and not result.success])
             for i in failed:
                 if self.correct_segmentation(i):
                     continue
@@ -200,13 +225,21 @@ class Decompiler:
                 self.source_context.purge(bad_bc.codeobj)
                 equivalence_results = self.check_reconstruction(str(self.source_context))
             for i in purged:
-                r = equivalence_results[i]
-                equivalence_results[i] = TestResult(False, "Compilation Error", r.bc_a, r.bc_b)
+                r = self.result_for_bytecode(i, equivalence_results)
+                if r is not None:
+                    equivalence_results[equivalence_results.index(r)] = TestResult(False, "Compilation Error", r.bc_a, r.bc_b)
             self.source_context.purged_cfts = []
             return equivalence_results
         except:
             self.source_context.purged_cfts = []
             return []
+
+    def preprocess_bytecode(self):
+        logger.info(f"Preprocessing bytecode for {self.name}...")
+        try:
+            Preprocessor().preprocess(self.pyc)
+        except Exception as e:
+            logger.warning(f"Preprocessing failed for {self.name}, continuing without container recovery: {e}")
 
     def mask_bytecode(self):
         logger.info(f"Masking bytecode for {self.name}...")
@@ -216,7 +249,7 @@ class Decompiler:
             self.ordered_instructions = [list(itertools.chain.from_iterable(bc.get_lno_insts().values())) for bc in self.pyc.iter_bytecodes()]
             self.ordered_bytecodes = [bc for bc in self.pyc.iter_bytecodes()]
             self.codeobj_instruction_lists = [[self.global_masker.get_model_view(inst) for inst in insts] for insts in self.ordered_instructions]
-            self.segmentation_requests = [bytecode_separator.join(self.global_masker.get_model_view(inst) for inst in insts) for insts in self.ordered_instructions]
+            self.segmentation_requests = [bytecode_separator.join(views) for views in self.codeobj_instruction_lists]
         except Exception as e:
             e.add_note("From masking bytecode")
             raise
@@ -224,7 +257,13 @@ class Decompiler:
     def unmask_lines(self):
         logger.info(f"Unmasking lines for {self.name}...")
         try:
-            self.source_lines = restore_masked_source_text(self.source_lines, self.global_masker)
+            # lines are unmasked independently, so lines of unchanged code objects are only unmasked once
+            if self.unmask_cache_size != len(self.global_masker.global_tab):
+                self.unmask_cache = {}
+                self.unmask_cache_size = len(self.global_masker.global_tab)
+            new_lines = [line for line in dict.fromkeys(self.source_lines) if line not in self.unmask_cache]
+            self.unmask_cache.update(zip(new_lines, restore_masked_source_text(new_lines, self.global_masker)))
+            self.source_lines = [self.unmask_cache[line] for line in self.source_lines]
         except Exception as e:
             e.add_note("From masking bytecode")
             raise
@@ -322,8 +361,8 @@ class Decompiler:
         logger.info(f"Translating statements for {self.name}...")
         try:
             translation_requests = []
-            for instructions, boundary_predictions in zip(self.ordered_instructions, self.segmentation_results):
-                translation_requests.append(self.make_translation_request(instructions, boundary_predictions))
+            for model_views, boundary_predictions in zip(self.codeobj_instruction_lists, self.segmentation_results):
+                translation_requests.append(self.make_translation_request(model_views, boundary_predictions))
             flattened_translation_requests = list(itertools.chain.from_iterable(translation_requests))
             self.translation_results = self.translator(flattened_translation_requests, check_timeout=self.check_timeout)
             unflatten(self.translation_results, translation_requests)
@@ -360,13 +399,13 @@ class Decompiler:
             raise
 
     # make a translation request from a segmentation result
-    def make_translation_request(self, instructions: list[list["Inst"]], boundary_predictions: list[dict]) -> list[str]:
+    def make_translation_request(self, model_views: list[str], boundary_predictions: list[dict]) -> list[str]:
         translation_requests = []
-        for inst, boundary_prediction in zip(instructions, boundary_predictions):
+        for model_view, boundary_prediction in zip(model_views, boundary_predictions):
             if boundary_prediction["entity"] == "B":
-                translation_requests.append(self.global_masker.get_model_view(inst))
+                translation_requests.append(model_view)
             else:
-                translation_requests[-1] += bytecode_separator + self.global_masker.get_model_view(inst)
+                translation_requests[-1] += bytecode_separator + model_view
         return translation_requests
 
     def update_source_lines(self):
@@ -394,63 +433,76 @@ class Decompiler:
             logger.error(f"Could not check decompilation due to pyenv error: {e}")
             return []
         else:
-            return compare_pyc(self.pyc, pyc)
+            return compare_pyc(self.patched_pyc, pyc)
+
+    # the original pyc only needs to be patched once, it is compared after every candidate fix
+    @functools.cached_property
+    def patched_pyc(self) -> PatchedPYC:
+        return PatchedPYC(self.pyc)
+
+    def result_for_bytecode(self, i: int, results: list[TestResult]) -> TestResult | None:
+        codeobj = self.ordered_bytecodes[i].codeobj
+        return next((r for r in results if isinstance(r, TestResult) and r.bc_a is not None and r.bc_a.codeobj == codeobj), None)
 
     # try to correct the segmentation of the ith code object
     def correct_segmentation(self, i: int, from_comp_error=False) -> bool:
-        if not self.segmentation_results[i]:
+        if len(self.segmentation_results) <= i or not self.segmentation_results[i]:
             return False
         if isinstance(self.source_context.cfts[self.ordered_bytecodes[i].codeobj], MetaTemplate):
             return False
         logger.info(f"Trying to fix segmentation for {self.ordered_bytecodes[i].name}")
         original_prediction = [r["entity"] for r in self.segmentation_results[i]]
+        original_translation = self.translation_results[i]
+        previous_lines, previous_indented_source = self.source_lines, self.indented_source
+        previous_context = self.source_context.snapshot()
+        previous_starts = [(inst, inst.starts_line) for insts in self.ordered_instructions for inst in insts]
+        passing = [j for j in range(len(self.ordered_bytecodes)) if (r := self.result_for_bytecode(j, self.equivalence_results)) is not None and r.success]
         strategy = functools.partial(m_deep_top_k, priority_function=naive_confidence_priority, m=2, k=self.top_k + 1)
         # skip first prediction since it is the same as original
         for k, prediction in enumerate(get_top_k_predictions(strategy, self.segmentation_results[i])[1:], start=1):
             if prediction[0] != "B":
                 continue
-            # change segmentation to new prediction
-            for r, p in zip(self.segmentation_results[i], prediction):
-                r["entity"] = p
-            self.update_starts_line()
-            # retranslate affected bytecode
-            translation_request = self.make_translation_request(self.ordered_instructions[i], self.segmentation_results[i])
-            previous_lines, previous_indented_source = self.source_lines, self.indented_source
-            previous_translation = self.translation_results[i]
+            accepted = False
             try:
-                self.translation_results[i] = self.translator(translation_request)
-                self.update_source_lines()
-                self.unmask_lines()
-            except Exception as e:
-                e.add_note("From translation")
-                raise
-            self.source_context.update_lines(self.source_lines)
-            # check if new reconstruction is correct
-            self.reconstruct_source()
-            equivalence_results = self.check_reconstruction(self.indented_source)
-            if from_comp_error:
-                if not has_comp_error(equivalence_results) or self.find_comp_error_cause(equivalence_results) not in [None, i]:
+                # All source representations and instruction line numbers belong
+                # to the same candidate. Keep them together until it is checked.
+                for r, p in zip(self.segmentation_results[i], prediction):
+                    r["entity"] = p
+                self.update_starts_line()
+                translation_request = self.make_translation_request(self.codeobj_instruction_lists[i], self.segmentation_results[i])
+                try:
+                    self.translation_results[i] = self.translator(translation_request, check_timeout=self.check_timeout)
+                    self.update_source_lines()
+                    self.unmask_lines()
+                except Exception as e:
+                    e.add_note("From translation")
+                    raise
+                self.source_context.update_lines(self.source_lines)
+                self.reconstruct_source()
+                equivalence_results = self.check_reconstruction(self.indented_source)
+                if from_comp_error:
+                    improved = bool(equivalence_results) and (not has_comp_error(equivalence_results) or self.find_comp_error_cause(equivalence_results) not in [None, i])
+                else:
+                    improved = False
+                if not from_comp_error and not has_comp_error(equivalence_results):
+                    result = self.result_for_bytecode(i, equivalence_results)
+                    improved = result is not None and result.success
+                accepted = improved and all((r := self.result_for_bytecode(j, equivalence_results)) is not None and r.success for j in passing)
+                if accepted:
                     self.equivalence_results = equivalence_results
                     self.highest_k_used = max(self.highest_k_used, k)
                     logger.info(f"Updated segmentation for {self.ordered_bytecodes[i].name}")
                     return True
-            elif not has_comp_error(equivalence_results):
-                target_code = self.ordered_bytecodes[i].codeobj
-                target = next((result for result in equivalence_results if getattr(result, "bc_a", None) is not None and result.bc_a.codeobj == target_code), None)
-                if target is not None and target.success:
-                    self.equivalence_results = equivalence_results
-                    self.highest_k_used = max(self.highest_k_used, k)
-                    logger.info(f"Updated segmentation for {self.ordered_bytecodes[i].name}")
-                    return True
-            # correction failed, roll back changes to internal source code storage
-            self.translation_results[i] = previous_translation
-            self.indented_source = previous_indented_source
-            self.source_lines = previous_lines
-            self.source_context.update_lines(previous_lines)
-        # revert to original segmentation
-        for r, p in zip(self.segmentation_results[i], original_prediction):
-            r["entity"] = p
-        self.update_starts_line()
+            finally:
+                if not accepted:
+                    for r, p in zip(self.segmentation_results[i], original_prediction):
+                        r["entity"] = p
+                    for inst, starts_line in previous_starts:
+                        inst.starts_line = starts_line
+                    self.translation_results[i] = original_translation
+                    self.source_lines = previous_lines
+                    self.indented_source = previous_indented_source
+                    self.source_context.restore(previous_context)
         logger.info(f"Could not fix segmentation for {self.ordered_bytecodes[i].name}")
         return False
 
@@ -466,7 +518,17 @@ class Decompiler:
                     inst.starts_line = None
 
 
-def decompile(pyc: PYCFile | Path, save_to: Path | None = None, config_file: Path | None = None, version: str | None = None, top_k: int = 10, trust_lnotab: bool = False, timeout: int | None = None) -> DecompilerResult:
+def decompile(
+    pyc: PYCFile | Path,
+    save_to: Path | None = None,
+    config_file: Path | None = None,
+    version: str | None = None,
+    top_k: int = 10,
+    trust_lnotab: bool = False,
+    timeout: int | None = None,
+    redis_cache_server_ip: str = None,
+    redis_port: int = 1679,
+) -> DecompilerResult:
     """
     Decompile a PYC file.
 
@@ -477,6 +539,8 @@ def decompile(pyc: PYCFile | Path, save_to: Path | None = None, config_file: Pat
     :param top_k: Max number of pyc segmentations to consider.
     :param trust_lnotab: Trust the lnotab in the input PYC for segmentation (False recommended).
     :param timeout: Maximum time in seconds to allow decompilation to run.
+    :param redis_cache_server_ip: IP for the Redis cache server.
+    :param redis_port: Port for the Redis cache server.
     :return: DecompilerResult class including important information about decompilation
     """
     logger.info(f"Loading {pyc}...")
@@ -505,7 +569,7 @@ def decompile(pyc: PYCFile | Path, save_to: Path | None = None, config_file: Pat
     if not config_file.exists():
         raise FileNotFoundError(f"Decompiler config {config_file} not found")
 
-    segmenter, translator = load_models(config_file, pversion)
+    segmenter, translator = load_models(config_file, pversion, redis_cache_server_ip, redis_port)
 
     if save_to:
         logger.info(f"Decompiling pyc {pyc.pyc_path.resolve() if pyc.pyc_path else repr(pyc)} to {save_to.resolve()}")

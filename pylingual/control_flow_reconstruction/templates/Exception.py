@@ -4,6 +4,7 @@ from typing import override
 from .Block import BlockTemplate
 from .Conditional import IfElse, IfThen
 from ..cft import ControlFlowTemplate, EdgeCategory, EdgeKind, InstTemplate, SourceLine, SourceContext, register_template
+from ..source import indent_lines
 from ..utils import (
     E,
     N,
@@ -29,6 +30,56 @@ from ..utils import (
 reraise = +N().with_cond(exact_instructions("COPY", "POP_EXCEPT", "RERAISE"))
 
 
+def try_header_source(template, source):
+    header = template.members["try_header"]
+    if header is None:
+        if isinstance(template, TryNested3_11):
+            return try_header_source(template.try_body, source)
+        return []
+    lines = source[header]
+    if all(inst.opname == "NOP" for inst in header.get_instructions()):
+        # An exception-region header falls through to its protected body.
+        # A predicted return here would make that body unreachable.
+        lines = [line for line in lines if line.line.strip() not in ("return", "return None")]
+    return lines
+
+
+@register_template(0, -1, (3, 11))
+class EmptyTry3_11(ControlFlowTemplate):
+    """Retain an optimized empty try whose handler is skipped by its jump."""
+
+    @classmethod
+    def try_match(cls, cfg, node):
+        if not isinstance(node, InstTemplate) or node.inst.opname != "JUMP_FORWARD":
+            return None
+        inst = node.inst
+        skipped = [i for i in inst.bytecode if inst.offset < i.offset < inst.target.offset]
+        if [i.opname for i in skipped] != [
+            "PUSH_EXC_INFO", "LOAD_GLOBAL", "CHECK_EXC_MATCH", "POP_JUMP_FORWARD_IF_FALSE", "STORE_FAST", "POP_EXCEPT",
+            "LOAD_CONST", "STORE_FAST", "DELETE_FAST", "JUMP_FORWARD", "LOAD_CONST", "STORE_FAST", "DELETE_FAST", "RERAISE",
+            "RERAISE", "COPY", "POP_EXCEPT", "RERAISE",
+        ]:
+            return None
+        reachable = {i for n in cfg for i in n.get_instructions()}
+        if any(i in reachable for i in skipped):
+            return None
+        if not any(entry.start == skipped[0].offset and entry.target == skipped[-3].offset and entry.lasti for entry in inst.bytecode.named_exception_table):
+            return None
+        exception_name, binding = skipped[1].argval, skipped[4].argval
+        if not isinstance(exception_name, str) or not exception_name.isidentifier() or not isinstance(binding, str) or not binding.isidentifier():
+            return None
+        if any(skipped[i].argval != binding for i in (7, 8, 11, 12)) or any(skipped[i].argval is not None for i in (6, 10)):
+            return None
+        if skipped[3].target is not skipped[14] or skipped[9].target.offset < inst.target.offset:
+            return None
+        template = condense_mapping(cls, cfg, {"body": node}, "body")
+        template.exception_name, template.binding = exception_name, binding
+        return template
+
+    def to_indented_source(self, source):
+        return self.line("try:") + self.line("pass", 1) + self.line(f"except {self.exception_name} as {self.binding}:") + self.line("pass", 1)
+
+
 class Except3_11(ControlFlowTemplate):
     @classmethod
     @override
@@ -41,7 +92,32 @@ class Except3_11(ControlFlowTemplate):
             return x
 
 
+def implicit_return_exit(node):
+    # the except body leaves through the function's lineless `return None`
+    insts = node.get_instructions()
+    for i, inst in enumerate(insts):
+        if inst.opname != "POP_EXCEPT":
+            continue
+        rest = insts[i + 1 :]
+        # skip the cleanup of a named exception
+        if len(rest) > 3 and rest[0].opname in ("LOAD_CONST", "LOAD_COMMON_CONSTANT") and rest[0].argval is None and rest[1].opname in ("STORE_FAST", "STORE_NAME") and rest[2].opname in ("DELETE_FAST", "DELETE_NAME"):
+            rest = rest[3:]
+        if rest and rest[0].opname == "RETURN_CONST":
+            ret = rest[:1]
+        elif len(rest) > 1 and rest[0].opname in ("LOAD_CONST", "LOAD_COMMON_CONSTANT") and rest[1].opname == "RETURN_VALUE":
+            ret = rest[:2]
+        else:
+            continue
+        # a lined POP_EXCEPT ends a `pass`; an explicit `return` would carry the line instead
+        if inst.starts_line is not None and inst.source_line.strip() not in ("pass", "..."):
+            continue
+        if ret[0].argval is None and all(x.starts_line is None for x in ret):
+            return True
+    return False
+
+
 @register_template(0, 0, *versions_from(3, 12))
+@register_template(2, 0, *versions_from(3, 12))
 class Try3_12(ControlFlowTemplate):
     template = T(
         try_header=N("try_body"),
@@ -51,17 +127,27 @@ class Try3_12(ControlFlowTemplate):
         tail=N.tail(),
     )
 
-    try_match = revert_on_fail(
-        make_try_match(
-            {
-                EdgeKind.Fall: "tail",
-            },
-            "try_header",
-            "try_body",
-            "except_body",
-            "reraise",
-        )
+    _try_match = make_try_match(
+        {
+            EdgeKind.Fall: "tail",
+        },
+        "try_header",
+        "try_body",
+        "except_body",
+        "reraise",
     )
+
+    @classmethod
+    def _match(cls, cfg, node):
+        if (x := cls._try_match(cfg, node)) is None:
+            return None
+        # a lined tail only reachable from the try body when the except returns is an else body; let TryElse take it once it is structured
+        tail = next((dst for _, dst, kind in cfg.out_edges(x, data="kind") if kind is EdgeKind.Fall), None)
+        if cfg.run != 2 and tail is not None and tail is not cfg.end and implicit_return_exit(x.except_body) and has_some_lines(cfg, tail):
+            return None
+        return x
+
+    try_match = revert_on_fail(_match)
 
     @to_indented_source
     def to_indented_source():
@@ -109,13 +195,38 @@ class TryElse3_12(ControlFlowTemplate):
         """
 
 
+def implicit_exception_return(cfg, node):
+    if node is None:
+        return False
+    insts = node.get_instructions()
+    opnames = [inst.opname for inst in insts]
+    if opnames == ["POP_EXCEPT", "LOAD_CONST", "RETURN_VALUE"]:
+        return insts[1].argval is None
+    if opnames not in (["POP_EXCEPT", "LOAD_CONST", "STORE_FAST", "DELETE_FAST", "LOAD_CONST", "RETURN_VALUE"], ["POP_EXCEPT", "LOAD_CONST", "STORE_NAME", "DELETE_NAME", "LOAD_CONST", "RETURN_VALUE"]):
+        return False
+    return insts[1].argval is None and insts[4].argval is None and insts[2].argval == insts[3].argval
+
+
+class ExceptionReturnTail3_11(ControlFlowTemplate):
+    template = T(
+        jump=~N("body").with_in_deg(1).with_cond(exact_instructions("JUMP_FORWARD")).with_cond(has_no_lines),
+        body=N(E.meta("end")).with_in_deg(1).with_cond(implicit_exception_return).with_cond(has_no_lines),
+        end=N.tail(),
+    )
+
+    try_match = make_try_match({EdgeKind.Meta: "end"}, "jump", "body")
+    to_indented_source = defer_source_to("body")
+
+
 @register_template(0, 0, (3, 11))
 class Try3_11(ControlFlowTemplate):
     template = T(
         try_header=N("try_body"),
         try_body=N("try_else.", None, "except_body"),
         except_body=N("tail.", None, "reraise").with_in_deg(1).of_subtemplate(Except3_11),
-        try_else=~N("tail.").with_in_deg(1).with_cond(has_no_lines),
+        try_else=~N("tail.").with_in_deg(1).with_cond(has_no_lines).of_subtemplate(ExceptionReturnTail3_11)
+        | N("tail.").with_in_deg(1).with_cond(has_no_lines)
+        | ~N("tail.").with_in_deg(1).with_cond(has_no_lines),
         reraise=reraise,
         tail=N.tail(),
     )
@@ -133,14 +244,8 @@ class Try3_11(ControlFlowTemplate):
         )
     )
 
-    @to_indented_source
-    def to_indented_source():
-        """
-        {try_header}
-        try:
-            {try_body}
-        {except_body}
-        """
+    def to_indented_source(self, source):
+        return list(chain(try_header_source(self, source), self.line("try:"), source[self.try_body, 1], source[self.except_body]))
 
 
 @register_template(0, 0, (3, 11))
@@ -167,16 +272,27 @@ class TryElse3_11(ControlFlowTemplate):
         )
     )
 
-    @to_indented_source
-    def to_indented_source():
-        """
-        {try_header}
-        try:
-            {try_body}
-        {except_body}
-        else:
-            {try_else}
-        """
+    def to_indented_source(self, source):
+        return list(chain(try_header_source(self, source), self.line("try:"), source[self.try_body, 1], source[self.except_body], self.line("else:"), source[self.try_else, 1]))
+
+
+@register_template(0, 1, (3, 11))
+class TryNested3_11(Try3_11):
+    template = T(
+        try_body=N("try_else.", None, "except_body").of_type(Try3_11, TryElse3_11),
+        except_body=N("tail.", None, "reraise").with_in_deg(1).of_subtemplate(Except3_11),
+        try_else=~N("tail.").with_in_deg(1).with_cond(has_no_lines),
+        reraise=reraise,
+        tail=N.tail(),
+    )
+
+    try_match = revert_on_fail(make_try_match({EdgeKind.Fall: "tail"}, "try_header", "try_else", "try_body", "except_body", "reraise"))
+
+    def to_indented_source(self, source):
+        # A child's unprotected prefix stays outside the enclosing region too.
+        header = try_header_source(self.try_body, source)
+        body = source[self.try_body]
+        return list(chain(header, self.line("try:"), indent_lines(body[len(header):]), source[self.except_body]))
 
 
 class BareExcept3_11(Except3_11):
@@ -250,18 +366,44 @@ class NamedExcTail3_11(ControlFlowTemplate):
     to_indented_source = defer_source_to("tail")
 
 
+# 3.15 loads None with LOAD_COMMON_CONSTANT
+named_exc_cleanup = [exact_instructions(load, store, delete, "RERAISE") for load in ("LOAD_CONST", "LOAD_COMMON_CONSTANT") for store, delete in (("STORE_FAST", "DELETE_FAST"), ("STORE_NAME", "DELETE_NAME"))]
+
+
 class NamedExc3_11(ExcBody3_11):
     template = T(
         STORE=N("body", None, "reraise").with_cond(exact_instructions("STORE_FAST"), exact_instructions("STORE_NAME")),
         body=N("tail.", None, "cleanup"),
-        cleanup=N(E.exc("reraise")).with_cond(exact_instructions("LOAD_CONST", "STORE_FAST", "DELETE_FAST", "RERAISE"), exact_instructions("LOAD_CONST", "STORE_NAME", "DELETE_NAME", "RERAISE")),
+        cleanup=N(E.exc("reraise")).with_cond(*named_exc_cleanup),
         reraise=reraise,
         tail=N.tail().of_subtemplate(NamedExcTail3_11),
     )
 
-    try_match = make_try_match({EdgeKind.Fall: "tail", EdgeKind.Exception: "reraise"}, "STORE", "body", "cleanup")
+    template_with_nops = T(
+        STORE=N("prefix", None, "reraise").with_cond(exact_instructions("STORE_FAST"), exact_instructions("STORE_NAME")),
+        prefix=N("body").with_in_deg(1).with_cond(lambda cfg, node: node is not None and bool(node.get_instructions()) and all(i.opname == "NOP" for i in node.get_instructions())),
+        body=N("tail.", None, "cleanup"),
+        cleanup=N(E.exc("reraise")).with_cond(*named_exc_cleanup),
+        reraise=reraise,
+        tail=N.tail().of_subtemplate(NamedExcTail3_11),
+    )
 
-    to_indented_source = defer_source_to("body")
+    @classmethod
+    def try_match(cls, cfg, node):
+        mapping = cls.template.try_match(cfg, node)
+        if mapping is None:
+            mapping = cls.template_with_nops.try_match(cfg, node)
+        if mapping is None:
+            return None
+        edges = {mapping[name]: kind.prop() for kind, name in ((EdgeKind.Fall, "tail"), (EdgeKind.Exception, "reraise")) if mapping.get(name) is not None}
+        return condense_mapping(cls, cfg, mapping, "STORE", "prefix", "body", "cleanup", out_edges=edges)
+
+    @to_indented_source
+    def to_indented_source():
+        """
+        {prefix}
+        {body}
+        """
 
 
 class ExceptExc3_11(Except3_11):

@@ -3,22 +3,25 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 from pylingual.decompiler import Decompiler
+from pylingual.equivalence_check import TestResult
 
 
 def result(code=None, success=False):
-    return SimpleNamespace(success=success, bc_a=None if code is None else SimpleNamespace(codeobj=code))
+    return TestResult(success, "Equal" if success else "Different bytecode", None if code is None else SimpleNamespace(codeobj=code), None)
 
 
 class ReconstructionRetryTests(unittest.TestCase):
     def fixture(self, verification):
         value=object.__new__(Decompiler)
         value.ordered_bytecodes=[SimpleNamespace(codeobj="original", name="fixture")]
-        value.ordered_instructions=[[object(),object()]]
+        value.ordered_instructions=[[SimpleNamespace(starts_line=1),SimpleNamespace(starts_line=2)]]
+        value.codeobj_instruction_lists=value.ordered_instructions
+        value.check_timeout=None
         value.segmentation_results=[[{"entity":"B"},{"entity":"B"}]]
         value.translation_results=[["original one","original two"]]
         value.source_lines=["original one","original two"]
         value.indented_source="original one\noriginal two"
-        value.source_context=SimpleNamespace(cfts={"original":object()},update_lines=Mock())
+        value.source_context=SimpleNamespace(cfts={"original":object()},update_lines=Mock(),snapshot=Mock(return_value=object()),restore=Mock())
         value.equivalence_results=[result("original")]
         value.top_k=2;value.highest_k_used=0
         value.update_starts_line=Mock()
@@ -42,7 +45,8 @@ class ReconstructionRetryTests(unittest.TestCase):
         self.assertIs(value.source_lines,old_lines)
         self.assertEqual(value.indented_source,old_source)
         self.assertEqual([row["entity"] for row in value.segmentation_results[0]],["B","B"])
-        self.assertIs(value.source_context.update_lines.call_args.args[0],old_lines)
+        value.source_context.restore.assert_called_once_with(value.source_context.snapshot.return_value)
+        self.assertEqual([inst.starts_line for inst in value.ordered_instructions[0]],[1,2])
 
     def test_target_success_is_matched_by_original_code_not_result_position(self):
         extra=result();verification=[extra,result("original",True)]

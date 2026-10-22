@@ -20,8 +20,13 @@ class Native315Proxy:
 
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--root',type=Path,required=True)
- p.add_argument('--workers',type=int,default=8);p.add_argument('--smoke',action='store_true');a=p.parse_args()
- root=a.root;run=root/'full-retrain-20261020';output=run/('target-corpora-smoke' if a.smoke else 'target-corpora')
+ p.add_argument('--workers',type=int,default=8);p.add_argument('--smoke',action='store_true')
+ p.add_argument('--output',type=Path);p.add_argument('--repo',type=Path)
+ p.add_argument('--versions',nargs='+',choices=['3.14','3.15'],default=['3.14','3.15'])
+ p.add_argument('--compiler-workers',type=int,default=4);a=p.parse_args()
+ root=a.root;run=root/'full-retrain-20261020';repo=a.repo or root/'repo';versions=tuple(dict.fromkeys(a.versions))
+ output=a.output or run/('target-corpora-smoke' if a.smoke else 'target-corpora')
+ if a.workers<1 or a.compiler_workers<1: raise ValueError('Worker counts must be positive')
  output.mkdir(parents=True,exist_ok=True)
  # Source selection is immutable; transported normalized source bytes are independently checksummed.
  checksums=json.loads((run/'retained-sources/checksums.json').read_text())
@@ -69,21 +74,24 @@ def main():
   descriptor=json.loads(subprocess.run(['docker','image','inspect',image],capture_output=True,text=True,check=True).stdout)[0]
   owner='target-full-retrain-20261020-'+str(os.getpid());wrapper=output/'python314'
   import shlex
-  wrapper.write_text('#!/bin/sh\nexec '+shlex.join(compiler_command(root/'repo',descriptor['Id'],owner,os.getuid(),os.getgid()))+' "$@"\n');wrapper.chmod(0o700)
+  wrapper.write_text('#!/bin/sh\nexec '+shlex.join(compiler_command(repo,descriptor['Id'],owner,os.getuid(),os.getgid()))+' "$@"\n');wrapper.chmod(0o700)
   pool314=queue.Queue();pool315=queue.Queue()
-  for _ in range(4):
-   compiler=Compiler(str(wrapper),str(root/'repo/dev_scripts/compile_source_server.py'));compilers.append(compiler)
-   verify_runtime('3.14',baseline['3.14'],compiler.metadata);pool314.put(compiler);pool315.put(Native315Proxy())
+  for _ in range(a.compiler_workers):
+   compiler=Compiler(str(wrapper),str(repo/'dev_scripts/compile_source_server.py'));compilers.append(compiler)
+   verify_runtime('3.14',baseline['3.14'],compiler.metadata);pool314.put(compiler)
+   if '3.15' in versions: pool315.put(Native315Proxy())
   with Gateway(('127.0.0.1',0),Handler) as gateway:
    gateway.compiler_pools={'3.14':pool314,'3.15':pool315};threading.Thread(target=gateway.serve_forever,daemon=True).start()
-   runtime315=json.loads((run/'native315-compile-rpc.json').read_text())
-   (output/'compiler-provenance.json').write_text(json.dumps({'3.14':{**compilers[0].metadata,'image_id':descriptor['Id'],'execution_host':'syssec-gpu4'},
-    '3.15':{**runtime315,'execution_host':'syssec-canis','source_disk_staging':False}},indent=2)+'\n')
+   compiler_provenance={'3.14':{**compilers[0].metadata,'image_id':descriptor['Id'],'execution_host':'syssec-gpu4'}}
+   if '3.15' in versions:
+    runtime315=json.loads((run/'native315-compile-rpc.json').read_text())
+    compiler_provenance['3.15']={**runtime315,'execution_host':'syssec-canis','source_disk_staging':False}
+   (output/'compiler-provenance.json').write_text(json.dumps(compiler_provenance,indent=2)+'\n')
    # Preserve all54,5003.14training and4,5003.15training identities, plus separate500validation/version.
-   selected=legacy
+   selected=[row for row in legacy if row["version"] in versions]
    if a.smoke:
     selected=[]
-    for version in ('3.14','3.15'):
+    for version in versions:
      for split in ('train','validation'):
       for corpus in ('pypi','csn'):
        selected.extend([row for row in legacy if row['version']==version and row['split']==split and row['corpus']==corpus][:2])
@@ -107,7 +115,7 @@ def main():
        if 'failure' in result: raise RuntimeError('Retained conversion failed: '+json.dumps({'metadata':row,'failure':result}))
       add(result,row['split'],'retained',row)
      progress('recovering-retained')
-    if not a.smoke:
+    if not a.smoke and '3.15' in versions:
      sampler=subprocess.Popen([sys.executable,'-u','-m','dev_scripts.sample_nas_sources','--root','/syssec-nas1/pyc-research/datasets',
       '--catalog',str(root/'nas-catalog.json.gz'),'--reserved',str(reserved_path),'--seed','20261021','--resume-offset',str(len(accepted)),'--read-workers','8'],
       stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True,bufsize=1)
@@ -138,7 +146,7 @@ def main():
          failures['reserved-or-prior-canonical']+=1;continue
         if not add(result,'train','nas-new'): failures['duplicate']+=1
        progress('sampling-new315')
-   for version in ('3.14','3.15'):
+   for version in versions:
     for split in ('train','validation'):
      chosen=[r for r in accepted if r['version']==version and r['split']==split]
      counts=dict(Counter(r['corpus'] for r in chosen));wanted={'pypi':49050,'csn':5450} if split=='train' else {'pypi':450,'csn':50}
