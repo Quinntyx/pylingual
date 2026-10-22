@@ -57,9 +57,10 @@ def component_metrics(args):
         rows = read_rows(args.data / f"{task}-validation.jsonl")
         if args.adapter_data:
             rows.extend(read_rows(args.adapter_data / f"{task}-validation.jsonl"))
+        task_disabled = getattr(args, "disable_" + task + "_adapters", args.disable_adapters)
         per_version = {}
         for version in args.versions:
-            if not args.disable_adapters and version not in bank.specs:
+            if not task_disabled and version not in bank.specs:
                 bank.load(version, args.families / task / metadata["adapters"][version])
             candidates = [row for row in rows if row["version"] == version]
             rng = random.Random(args.seed)
@@ -75,7 +76,7 @@ def component_metrics(args):
                 raise ValueError(f"No usable validation examples for {task} {version}")
             correct = total = exact = 0
             boundary_tp = boundary_fp = boundary_fn = 0
-            with bank.use(None if args.disable_adapters else version), torch.inference_mode():
+            with bank.use(None if task_disabled else version), torch.inference_mode():
                 for start in range(0, len(examples), 8):
                     chunk = examples[start:start + 8]
                     batch = collate([encoded for _, encoded in chunk], tokenizer, device)
@@ -106,12 +107,18 @@ def component_metrics(args):
 
 
 def file_metrics(args, selection):
-    rows = []
+    results_path = args.output / "file_results.jsonl"
+    rows = [json.loads(line) for line in results_path.read_text().splitlines()] if getattr(args, "resume", False) and results_path.exists() else []
+    completed = {row["relative"] for row in rows}
+    if len(completed) != len(rows) or not completed.issubset({row["relative"] for row in selection["files"]}):
+        raise ValueError("Invalid resumed file results")
     model_stats = {}
     config = args.config or Path(__file__).resolve().parents[1] / "pylingual" / "decompiler_config.yaml"
     old_handler = signal.signal(signal.SIGALRM, expired)
     try:
         for item in selection["files"]:
+            if item["relative"] in completed:
+                continue
             started = time.monotonic()
             result = {**item, "success": False, "code_objects": 0, "equal_code_objects": 0, "phase": "model_load"}
             try:
@@ -127,7 +134,7 @@ def file_metrics(args, selection):
                 result["phase"] = "decompilation"
                 inference_started = time.monotonic()
                 signal.alarm(args.timeout)
-                destination = args.output / "decompiled" / item["version"] / (item["source_sha512"] + ".py")
+                destination = args.output / "decompiled" / item["version"] / (hashlib.sha256(item["relative"].encode()).hexdigest()[:16] + ".py")
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 answer = decompile(args.dataset / item["relative"], destination, config_file=config, timeout=args.timeout)
                 checks = answer.equivalence_results

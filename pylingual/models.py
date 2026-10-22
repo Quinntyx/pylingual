@@ -46,11 +46,16 @@ class CacheTranslator:
         self.cache = OrderedDict()
         self.maxsize = maxsize
         self.input_prefix = ""
+        self.generation_kwargs = {}
+        self.decode_excluded_ids = {0, 1, 2, 3, 4}
         self.model.to(self.device)
 
     def __getitem__(self, item):
         self.cache.move_to_end(item)
         return self.cache[item]
+
+    def _prepare_bytecode(self, text):
+        return text
 
     def _translate_and_decode(
         self,
@@ -65,15 +70,15 @@ class CacheTranslator:
         for i in range(0, len(translation_requests), batch_size):
             # TrackedDataset is indexable but does not support slices, and its
             # iterator is stateful. Indexed access also makes retries replayable.
-            batch = [self.input_prefix + translation_requests[j] for j in range(i, min(i + batch_size, len(translation_requests)))]
+            batch = [self.input_prefix + self._prepare_bytecode(translation_requests[j]) for j in range(i, min(i + batch_size, len(translation_requests)))]
             encoded = self.tokenizer(batch, return_tensors= "pt", padding=True).to(self.device)
 
             with torch.no_grad():
-                output = self.model.generate(**encoded, max_length=512)
+                output = self.model.generate(**encoded, max_length=512, **self.generation_kwargs)
 
             for tokens in output:
                 # explicitly filter out the special tokens we want to skip: <pad>, <s>, </s>, <unk>, <mask>
-                filtered_tokens = [tok for tok in tokens.tolist() if tok not in [0, 1, 2, 3, 4]]
+                filtered_tokens = [tok for tok in tokens.tolist() if tok not in self.decode_excluded_ids]
                 # decode the remaining tokens
                 decoded_results.append(self.tokenizer.decode(filtered_tokens, skip_special_tokens=False))
 
@@ -133,6 +138,17 @@ class VersionedTranslator(CacheTranslator):
         self.bank = bank
         self.version = version if use_adapter else None
         self.input_prefix = prefix.format(version=version)
+        self.python_version = version
+        if bank.registry is not None:
+            self.generation_kwargs = {"bad_words_ids": [[identifier] for identifier in bank.registry.forbidden_ids]}
+            # Trained BPE tokenizers can flag ordinary Python tokens as special.
+            # Discard only actual control tokens and input-only opcode tokens.
+            control_roles = ("bos", "eos", "pad", "unk", "mask", "cls", "sep")
+            control_ids = (getattr(tokenizer, f"{role}_token_id", None) for role in control_roles)
+            self.decode_excluded_ids = {identifier for identifier in control_ids if identifier is not None} | set(bank.registry.forbidden_ids)
+
+    def _prepare_bytecode(self, text):
+        return self.bank.bind_bytecode(text, self.python_version)
 
     def __call__(self, *args, **kwargs):
         # The output cache and all generation, including retries, share the lock.
@@ -156,22 +172,24 @@ def load_models(
     device = torch.device("cuda:0" if torch.cuda.is_available() else "mps" if hasattr(torch.backends, "mps") and torch.backends.mps.is_available() else "cpu")
     root = Path(config_file).resolve().parent
     use_adapters = shared.get("USE_ADAPTERS", True)
+    use_statement_adapters = shared.get("USE_STATEMENT_ADAPTERS", use_adapters)
+    use_segmentation_adapters = shared.get("USE_SEGMENTATION_ADAPTERS", use_adapters)
     if "SEGMENTATION_MODEL" in shared:
-        if use_adapters:
+        if use_segmentation_adapters:
             segmenter = load_version(root / shared["SEGMENTATION_MODEL"], "segmentation", str(version), device)
         else:
             from pylingual.lora import VersionedPipeline
             bank, _, _, pipeline = load_family(root / shared["SEGMENTATION_MODEL"], "segmentation", device)
-            segmenter = VersionedPipeline(pipeline, bank, None)
+            segmenter = pipeline.for_version(None, python_version=str(version)) if hasattr(pipeline, "for_version") else VersionedPipeline(pipeline, bank, None)
     else:
         seg_config = legacy["SEGMENTATION_MODEL"]
         segmenter = _load_legacy_segmenter(seg_config, device, token)
     if "STATEMENT_MODEL" in shared:
-        if use_adapters:
+        if use_statement_adapters:
             bank, tokenizer, metadata = load_version(root / shared["STATEMENT_MODEL"], "statement", str(version), device)
         else:
             bank, tokenizer, metadata, _ = load_family(root / shared["STATEMENT_MODEL"], "statement", device)
-        return segmenter, VersionedTranslator(bank, tokenizer, device, str(version), metadata.get("source_prefix", ""), use_adapter=use_adapters)
+        return segmenter, VersionedTranslator(bank, tokenizer, device, str(version), metadata.get("source_prefix", ""), use_adapter=use_statement_adapters)
     stmt_config = legacy["STATEMENT_MODEL"]
     translation_model = transformers.T5ForConditionalGeneration.from_pretrained(stmt_config["REPO"], revision=stmt_config["REVISION"], token=token)
     translation_tokenizer = transformers.RobertaTokenizer.from_pretrained(stmt_config["TOKENIZER"], token=token)
@@ -188,7 +206,8 @@ def _load_legacy_segmenter(seg_config, device, token):
         revision=seg_config["REVISION"],
         token=token,
     )
-    segmentation_tokenizer_file = huggingface_hub.hf_hub_download(repo_id=seg_config["TOKENIZER"], filename="tokenizer.json", token=token)
+    tokenizer_directory = Path(seg_config["TOKENIZER"])
+    segmentation_tokenizer_file = str(tokenizer_directory / "tokenizer.json") if tokenizer_directory.is_dir() else huggingface_hub.hf_hub_download(repo_id=seg_config["TOKENIZER"], filename="tokenizer.json", token=token)
     segmentation_tokenizer = transformers.PreTrainedTokenizerFast(
         tokenizer_file=segmentation_tokenizer_file,
         unk_token="[UNK]",

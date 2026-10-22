@@ -169,7 +169,7 @@ class Decompiler:
                 if not self.correct_segmentation(bad_idx, from_comp_error=True):
                     return
                 corrected_comp_errors.add(bad_idx)
-            failed = TrackedList(CORRECTION_STEP, [i for i, result in enumerate(self.equivalence_results) if not result.success])
+            failed = TrackedList(CORRECTION_STEP, [i for i, bc in enumerate(self.ordered_bytecodes) if any(not result.success and getattr(result, "bc_a", None) is not None and result.bc_a.codeobj == bc.codeobj for result in self.equivalence_results)])
             for i in failed:
                 if self.correct_segmentation(i):
                     continue
@@ -237,17 +237,32 @@ class Decompiler:
             MAX_WINDOW_LENGTH = 512
             STEP_SIZE = 128
 
-            codeobj_list_instructions = (segmentation_request.split(bytecode_separator) for segmentation_request in self.segmentation_requests)
+            # A code object can have no modeled instructions (e.g. a stripped
+            # constant-return lambda). It has no boundaries to predict, not one
+            # empty opcode. Compact only the model requests, then restore the
+            # original code-object positions before updating instruction lines.
+            active_indices = [index for index, request in enumerate(self.segmentation_requests) if request]
+            if not active_indices:
+                self.segmentation_results = [[] for _ in self.segmentation_requests]
+                self.update_starts_line()
+                return
+            codeobj_list_instructions = (self.segmentation_requests[index].split(bytecode_separator) for index in active_indices)
             codeobj_token_list = []
 
             # make a list of instructions with their token lengths, can be turned into a list comp but readability suffers and complexity is increased
             for codeobj_instructions in codeobj_list_instructions:
                 token_list = []
-                tokenized_insts = self.segmenter.tokenizer(codeobj_instructions)
+                if hasattr(self.segmenter, "instruction_token_lengths"):
+                    token_lengths = self.segmenter.instruction_token_lengths(codeobj_instructions)
+                else:
+                    tokenized_insts = self.segmenter.tokenizer(codeobj_instructions)
+                    token_lengths = [len(tokenized_insts[i]) for i in range(len(codeobj_instructions))]
 
-                # map token length to instruction
-                for i, inst in enumerate(codeobj_instructions):
-                    token_list.append([inst, len(tokenized_insts[i])])
+                # Include structural-token overhead conservatively for window sizing.
+                for inst, length in zip(codeobj_instructions, token_lengths):
+                    if length > MAX_WINDOW_LENGTH:
+                        raise ValueError("One bytecode instruction exceeds the segmentation window")
+                    token_list.append([inst, length])
 
                 # map to codeobject
                 codeobj_token_list.append(token_list)
@@ -260,13 +275,19 @@ class Decompiler:
             window_coordinates, flat_window_requests, inst_index = zip(*window_segmentation_requests)
 
             window_segmentation_results = [filter_subwords(segmentation_result) for segmentation_result in self.segmenter(TrackedDataset(SEGMENTATION_STEP, list(flat_window_requests), check_timeout=self.check_timeout), batch_size=8)]
+            if len(window_segmentation_results) != len(inst_index):
+                raise ValueError("Segmentation returned the wrong number of windows")
+            if any(len(result) != len(indices) for result, indices in zip(window_segmentation_results, inst_index)):
+                raise ValueError("Segmentation predictions do not align to instruction windows")
 
-            self.segmentation_results = merge(list(window_coordinates), window_segmentation_results, list(inst_index), MAX_WINDOW_LENGTH, STEP_SIZE)  # merge everything
-
-            # force each code object to start with a 'B'
-
-            for codeobj in self.segmentation_results:
+            active_results = merge(list(window_coordinates), window_segmentation_results, list(inst_index), MAX_WINDOW_LENGTH, STEP_SIZE)
+            if len(active_results) != len(active_indices):
+                raise ValueError("Segmentation returned the wrong number of code objects")
+            self.segmentation_results = [[] for _ in self.segmentation_requests]
+            for index, codeobj in zip(active_indices, active_results):
+                # Force each nonempty code object to start with a 'B'.
                 codeobj[0]["entity"] = "B"
+                self.segmentation_results[index] = codeobj
 
             self.update_starts_line()
         except Exception as e:
@@ -395,6 +416,7 @@ class Decompiler:
             # retranslate affected bytecode
             translation_request = self.make_translation_request(self.ordered_instructions[i], self.segmentation_results[i])
             previous_lines, previous_indented_source = self.source_lines, self.indented_source
+            previous_translation = self.translation_results[i]
             try:
                 self.translation_results[i] = self.translator(translation_request)
                 self.update_source_lines()
@@ -412,12 +434,16 @@ class Decompiler:
                     self.highest_k_used = max(self.highest_k_used, k)
                     logger.info(f"Updated segmentation for {self.ordered_bytecodes[i].name}")
                     return True
-            elif not has_comp_error(equivalence_results) and equivalence_results[i].success:
-                self.equivalence_results[i] = equivalence_results[i]
-                self.highest_k_used = max(self.highest_k_used, k)
-                logger.info(f"Updated segmentation for {self.ordered_bytecodes[i].name}")
-                return True
+            elif not has_comp_error(equivalence_results):
+                target_code = self.ordered_bytecodes[i].codeobj
+                target = next((result for result in equivalence_results if getattr(result, "bc_a", None) is not None and result.bc_a.codeobj == target_code), None)
+                if target is not None and target.success:
+                    self.equivalence_results = equivalence_results
+                    self.highest_k_used = max(self.highest_k_used, k)
+                    logger.info(f"Updated segmentation for {self.ordered_bytecodes[i].name}")
+                    return True
             # correction failed, roll back changes to internal source code storage
+            self.translation_results[i] = previous_translation
             self.indented_source = previous_indented_source
             self.source_lines = previous_lines
             self.source_context.update_lines(previous_lines)

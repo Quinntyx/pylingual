@@ -1,5 +1,11 @@
 # Shared-backbone PyLingual ablation
 
+> **Implementation history:** this guide describes the existing pilot scripts.
+> The [corrected training design](SHARED_TOKENIZER_TRAINING.md) supersedes the
+> training choices below: pooled bytecode-trained tokenizers, normal training
+> settings, and 16 reserved opcode slots with LoRA + new-token embedding updates.
+> The existing commands do not yet implement the new binding/embedding format.
+
 PyLingual has two neural tasks: statement translation (T5) and instruction-boundary
 segmentation (RoBERTa). This implementation shares **one backbone per task** across
 versions, with small, unmerged query/value LoRAs. It also supports sharing only one

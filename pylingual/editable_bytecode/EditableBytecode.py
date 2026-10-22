@@ -18,6 +18,14 @@ from .control_flow_graph import bytecode_to_control_flow_graph
 from typing import Callable
 
 
+def _annotation_preamble_signature(instructions):
+    """Compare common constants by opcode index across xdis representations."""
+    # xdis may expose LOAD_COMMON_CONSTANT.argval as the actual Python object
+    # (for example NotImplementedError), rather than its integer table index.
+    return tuple((inst.opname, inst.arg if inst.opname == "LOAD_COMMON_CONSTANT" else inst.argval)
+                 for inst in instructions)
+
+
 class EditableBytecode:
     """
     An editable representation of Pythonic bytecode. Many values in it, including its instructions, may be incorrect
@@ -164,7 +172,7 @@ class EditableBytecode:
             if not codeobj.co_name == "__annotate__" and target_bc.instructions[0].argval == ".format":
                 target_bc.instructions[0].argval = "format"
 
-            target_preamble = tuple((inst.opname, inst.argval) for inst in target_bc.instructions[: len(ANNOTATE_FUNC_PREAMBLE)])
+            target_preamble = _annotation_preamble_signature(target_bc.instructions[: len(ANNOTATE_FUNC_PREAMBLE)])
             if target_preamble != ANNOTATE_FUNC_PREAMBLE:
                 return None
             return target_bc
@@ -587,6 +595,9 @@ class EditableBytecode:
             "co_consts": tuple(co_consts),
             "co_names": tuple(self.co_names),
             "co_varnames": tuple(self.co_varnames),
+            # Annotation inlining can insert locals; native CodeType.replace
+            # requires the local count to match the updated variable table.
+            "co_nlocals": len(self.co_varnames),
         }
 
         # co_lnotab deprecated in python >= 3.10

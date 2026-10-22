@@ -6,6 +6,8 @@ Adapter checkpoints are bound to an immutable backbone ID and explicit targets.
 from __future__ import annotations
 
 import json
+import hashlib
+import uuid
 import math
 from contextlib import contextmanager
 from pathlib import Path
@@ -14,6 +16,9 @@ from threading import RLock
 import torch
 from torch import nn
 from torch.nn import functional as F
+
+from pylingual.opcodes import OpcodeRegistry, tokenizer_fingerprint
+from pylingual.embedding_updates import EncoderTokenDeltas
 
 
 class LowRank(nn.Module):
@@ -58,16 +63,28 @@ def adapter_key(version: str) -> str:
 
 
 class AdapterBank:
-    """Owns a shared backbone and serializes adapter selection plus inference."""
-    def __init__(self, model: nn.Module, backbone_id: str, targets: tuple[str, ...]):
+    """One frozen backbone; bindings, sparse input rows and LoRAs switch together."""
+    def __init__(self, model: nn.Module, backbone_id: str, targets: tuple[str, ...],
+                 *, opcode_registry=None, tokenizer=None, task=None):
         if not backbone_id or not targets:
             raise ValueError("A backbone ID and LoRA targets are required")
-        self.model = model
-        self.backbone_id = backbone_id
-        self.targets = tuple(targets)
+        self.model, self.backbone_id, self.targets = model, backbone_id, tuple(targets)
         self.lock = RLock()
-        self.layers = {}
-        self.specs = {}
+        self.layers, self.specs, self.bindings = {}, {}, {}
+        self.active_version = None
+        self.registry = opcode_registry
+        self.tokenizer_id = None
+        self.task = task
+        self.input_updates = None
+        if opcode_registry is not None:
+            if not isinstance(opcode_registry, OpcodeRegistry):
+                self.registry = OpcodeRegistry(opcode_registry)
+            if tokenizer is None or task not in ("statement", "segmentation"):
+                raise ValueError("Opcode-aware banks require a tokenizer and explicit task")
+            self.registry.validate_tokenizer(tokenizer)
+            if model.get_input_embeddings().num_embeddings != len(tokenizer):
+                raise ValueError("Backbone vocabulary does not match the immutable tokenizer")
+            self.tokenizer_id = tokenizer_fingerprint(tokenizer)
         for name, module in list(model.named_modules()):
             if isinstance(module, nn.Linear) and name.rsplit(".", 1)[-1] in targets:
                 parent_name, _, attr = name.rpartition(".")
@@ -77,17 +94,38 @@ class AdapterBank:
                 self.layers[name] = wrapped
         if not self.layers:
             raise ValueError(f"No linear layers matched LoRA targets {targets!r}")
+        if self.registry is not None:
+            self.input_updates = EncoderTokenDeltas(model, task)
+            self.input_updates.train(model.training)
+            model.add_module("_pylingual_input_updates", self.input_updates)
         model.requires_grad_(False)
 
-    def add(self, version: str, rank=8, alpha=16.0, dropout=0.0):
+    def register_bindings(self, version, bindings):
+        bindings = self.registry.validate_bindings(bindings) if self.registry else dict(bindings)
+        if self.registry is None and bindings:
+            raise ValueError("Opcode bindings require a frozen registry")
+        if version in self.bindings and self.bindings[version] != bindings:
+            raise ValueError("Cannot change pinned opcode bindings")
+        self.bindings[version] = bindings
+
+    def bind_bytecode(self, bytecode, version):
+        return bytecode if self.registry is None else self.registry.bind(bytecode, self.bindings.get(version, {}))
+
+    def add(self, version: str, rank=8, alpha=16.0, dropout=0.0, *, bindings=None):
         with self.lock:
-            if version in self.specs:
+            if version in self.specs or any(adapter_key(v) == adapter_key(version) for v in self.specs):
                 raise ValueError(f"Adapter {version} already exists")
+            if type(rank) is not int or rank < 1 or not math.isfinite(alpha) or alpha <= 0 or not 0 <= dropout < 1:
+                raise ValueError("Invalid LoRA rank, alpha or dropout")
+            chosen = self.bindings.get(version, {}) if bindings is None else bindings
+            self.register_bindings(version, chosen)
             key = adapter_key(version)
             for layer in self.layers.values():
                 adapter = LowRank(layer.base, rank, alpha, dropout)
                 adapter.train(self.model.training)
                 layer.adapters[key] = adapter
+            if self.input_updates is not None:
+                self.input_updates.add(key, self.registry.row_ids(chosen))
             self.specs[version] = {"rank": rank, "alpha": alpha, "dropout": dropout}
 
     def select(self, version: str | None):
@@ -96,58 +134,120 @@ class AdapterBank:
         key = adapter_key(version) if version is not None else None
         for layer in self.layers.values():
             layer.active = key
+        if self.input_updates is not None:
+            self.input_updates.active = key
+        self.active_version = version
 
     @contextmanager
     def use(self, version: str | None):
         with self.lock:
-            previous = next(iter(self.layers.values())).active
+            previous = self.active_version
             self.select(version)
             try:
                 yield self.model
             finally:
-                for layer in self.layers.values():
-                    layer.active = previous
+                self.select(previous)
 
     def trainable(self, version: str):
-        self.model.requires_grad_(False)
-        key = adapter_key(version)
-        self.select(version)
-        parameters = []
-        for layer in self.layers.values():
-            adapter = layer.adapters[key]
-            adapter.requires_grad_(True)
-            parameters.extend(adapter.parameters())
-        return parameters
+        with self.lock:
+            self.model.requires_grad_(False)
+            self.model.zero_grad(set_to_none=True)
+            self.select(version)
+            key = adapter_key(version)
+            parameters = []
+            for layer in self.layers.values():
+                adapter = layer.adapters[key]
+                adapter.requires_grad_(True)
+                parameters.extend(adapter.parameters())
+            if self.input_updates is not None:
+                rows = self.input_updates.rows[key]
+                if rows.delta.numel():
+                    rows.delta.requires_grad_(True)
+                    parameters.append(rows.delta)
+            return parameters
 
     def save(self, version: str, directory: Path):
-        directory = Path(directory)
-        directory.mkdir(parents=True, exist_ok=True)
-        key = adapter_key(version)
-        state = {f"{name}.{part}": tensor.detach().cpu() for name, layer in self.layers.items() for part, tensor in layer.adapters[key].state_dict().items()}
-        torch.save(state, directory / "adapter.pt")
-        metadata = {"format": 1, "backbone_id": self.backbone_id, "version": version, "targets": list(self.targets), "layers": list(self.layers), **self.specs[version]}
-        (directory / "adapter.json").write_text(json.dumps(metadata, indent=2) + "\n")
+        with self.lock:
+            directory = Path(directory)
+            directory.mkdir(parents=True, exist_ok=True)
+            key = adapter_key(version)
+            state = {f"{name}.{part}": tensor.detach().cpu().clone() for name, layer in self.layers.items() for part, tensor in layer.adapters[key].state_dict().items()}
+            metadata = {"format": 1, "backbone_id": self.backbone_id, "version": version,
+                        "targets": list(self.targets), "layers": list(self.layers), **self.specs[version]}
+            if self.input_updates is not None:
+                rows = self.input_updates.rows[key]
+                state["input_embedding.delta"] = rows.delta.detach().cpu().clone()
+                metadata.update(format=2, task=self.task, opcode_registry_sha256=self.registry.fingerprint,
+                                tokenizer_sha256=self.tokenizer_id, bindings=self.bindings[version],
+                                input_embedding_ids=rows.token_ids.tolist(), embedding_initialization="zero-correction")
+            if any(not torch.isfinite(value).all() for value in state.values()):
+                raise ValueError("Refusing to save non-finite adapter parameters")
+            temporary = directory / ("weights-" + uuid.uuid4().hex + ".tmp")
+            torch.save(state, temporary)
+            if self.registry is None:
+                temporary.replace(directory / "adapter.pt")
+            else:
+                digest = hashlib.sha256(temporary.read_bytes()).hexdigest()
+                filename = "adapter-" + digest + ".pt"
+                temporary.replace(directory / filename)
+                metadata.update(weights=filename, weights_sha256=digest)
+            temporary_meta = directory / ("metadata-" + uuid.uuid4().hex + ".tmp")
+            temporary_meta.write_text(json.dumps(metadata, indent=2) + "\n")
+            temporary_meta.replace(directory / "adapter.json")
 
-    def load(self, version: str, directory: Path):
+    def load(self, version: str, directory: Path, *, replace=False):
         with self.lock:
             directory = Path(directory)
             meta = json.loads((directory / "adapter.json").read_text())
-            if meta.get("format") != 1 or meta.get("backbone_id") != self.backbone_id or meta.get("version") != version:
+            expected_format = 2 if self.registry is not None else 1
+            if meta.get("format") != expected_format or meta.get("backbone_id") != self.backbone_id or meta.get("version") != version:
                 raise ValueError("Adapter format, version or backbone ID mismatch")
-            if tuple(meta["targets"]) != self.targets or meta["layers"] != list(self.layers):
+            if tuple(meta.get("targets", [])) != self.targets or meta.get("layers") != list(self.layers):
                 raise ValueError("Adapter target layers do not match the backbone")
-            state = torch.load(directory / "adapter.pt", map_location="cpu", weights_only=True)
+            bindings, ids = {}, []
+            filename = "adapter.pt"
+            if self.registry is not None:
+                if meta.get("task") != self.task or meta.get("opcode_registry_sha256") != self.registry.fingerprint or meta.get("tokenizer_sha256") != self.tokenizer_id:
+                    raise ValueError("Adapter tokenizer, opcode registry or task mismatch")
+                bindings = self.registry.validate_bindings(meta.get("bindings"))
+                ids = self.registry.row_ids(bindings)
+                if meta.get("input_embedding_ids") != ids or meta.get("embedding_initialization") != "zero-correction":
+                    raise ValueError("Adapter input embedding IDs or initialization mismatch")
+                filename = meta.get("weights", "")
+                if not filename or Path(filename).name != filename:
+                    raise ValueError("Invalid adapter weights path")
+                payload = directory / filename
+                if not payload.resolve().is_relative_to(directory.resolve()):
+                    raise ValueError("Adapter weights path escapes its package")
+                if hashlib.sha256(payload.read_bytes()).hexdigest() != meta.get("weights_sha256"):
+                    raise ValueError("Adapter weights checksum mismatch")
+            rank, alpha, dropout = meta.get("rank"), meta.get("alpha"), meta.get("dropout")
+            if type(rank) is not int or rank < 1 or not isinstance(alpha, (float, int)) or not math.isfinite(alpha) or alpha <= 0 or not isinstance(dropout, (float, int)) or not 0 <= dropout < 1:
+                raise ValueError("Invalid LoRA rank, alpha or dropout")
+            if version in self.bindings and self.bindings[version] != bindings:
+                raise ValueError("Cannot change pinned opcode bindings")
+            if version in self.specs and (not replace or self.specs[version] != {"rank": rank, "alpha": alpha, "dropout": dropout}):
+                raise ValueError("Adapter already exists or replacement configuration differs")
+            state = torch.load(directory / filename, map_location="cpu", weights_only=True)
             expected = {f"{name}.{part}" for name in self.layers for part in ("a", "b")}
-            if set(state) != expected:
-                raise ValueError("Adapter checkpoint contains missing or unexpected tensors")
-            # Validate all shapes before mutating the shared model.
+            if self.registry is not None:
+                expected.add("input_embedding.delta")
+            if set(state) != expected or any(not isinstance(t, torch.Tensor) or not t.is_floating_point() or not torch.isfinite(t).all() for t in state.values()):
+                raise ValueError("Adapter checkpoint contains missing, unexpected or non-finite tensors")
             for name, layer in self.layers.items():
-                if tuple(state[f"{name}.a"].shape) != (meta["rank"], layer.base.in_features) or tuple(state[f"{name}.b"].shape) != (layer.base.out_features, meta["rank"]):
+                if tuple(state[f"{name}.a"].shape) != (rank, layer.base.in_features) or tuple(state[f"{name}.b"].shape) != (layer.base.out_features, rank):
                     raise ValueError(f"Adapter shape mismatch at {name}")
-            self.add(version, meta["rank"], meta["alpha"], meta["dropout"])
+            if self.registry is not None and tuple(state["input_embedding.delta"].shape) != (len(ids), self.model.get_input_embeddings().embedding_dim):
+                raise ValueError("Adapter input embedding shape mismatch")
+            # All provenance/tensor checks finish before mutating a shared model.
+            if version not in self.specs:
+                self.add(version, rank, alpha, dropout, bindings=bindings)
             key = adapter_key(version)
             for name, layer in self.layers.items():
                 layer.adapters[key].load_state_dict({part: state[f"{name}.{part}"] for part in ("a", "b")})
+            if self.input_updates is not None:
+                with torch.no_grad():
+                    self.input_updates.rows[key].delta.copy_(state["input_embedding.delta"])
             self.model.eval()
 
 

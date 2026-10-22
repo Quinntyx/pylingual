@@ -1,5 +1,10 @@
 # Model Training
 
+For the shared-backbone design, including generic tokenizers, 16 reserved opcode
+slots, and version-specific LoRA + embedding updates, see
+[Shared tokenizer training and future-version updates](SHARED_TOKENIZER_TRAINING.md).
+That document distinguishes the agreed design from currently implemented scripts.
+
 PyLingual's accuracy is dependent on having accurate segmentation and statement models [^1]. The segmentation model divides a list of bytecode instructions into groups for each source instruction. The statement model transforms each group of instructions into source code. The instructions for training these models is as follows:
 
 ## Dataset generation

@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 from collections import defaultdict
 from pathlib import Path
@@ -25,22 +26,49 @@ def main():
     parser.add_argument("--data", type=Path, required=True, help="JSONL rows for one version, with file/source/bytecode and segmentation boundary fields")
     parser.add_argument("--version", required=True)
     parser.add_argument("--output", type=Path, required=True, help="New family directory; must not exist")
-    parser.add_argument("--steps", type=int, default=600)
+    parser.add_argument("--steps", type=int, help="Bounded smoke updates; omit for explicit --epochs")
+    parser.add_argument("--epochs", type=float)
+    parser.add_argument("--validation-data", type=Path)
+    parser.add_argument("--encoded-data", type=Path, help="Audited memory-mapped Arrow data matching --data source journal")
+    parser.add_argument("--encoded-validation", type=Path)
+    parser.add_argument("--learning-rate", type=float, default=2e-5)
+    parser.add_argument("--precision", choices=("fp16", "fp32"), default="fp16")
+    parser.add_argument("--bindings", type=Path, help="Explicit future mnemonic-to-slot JSON; otherwise infer from training rows")
+    parser.add_argument("--checkpoint-steps", type=int, default=10000)
+    parser.add_argument("--resume", type=Path, help="Existing adapter-only Trainer checkpoint; use a fresh --output")
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--accumulation", type=int, default=2)
     parser.add_argument("--rank", type=int, default=8)
     parser.add_argument("--seed", type=int, default=20261016)
     args = parser.parse_args()
     version = str(PythonVersion(args.version))
+    args.version = version
+    # Set device and synchronize path checks before any rank publishes output.
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    if world_size > 1:
+        local_rank = int(os.environ["LOCAL_RANK"])
+        torch.cuda.set_device(local_rank)
+        if not torch.distributed.is_initialized():
+            torch.distributed.init_process_group(backend="nccl", device_id=torch.device("cuda", local_rank))
     if args.output.exists():
         raise FileExistsError(f"Refusing to overwrite family {args.output}")
     if args.family.resolve() in args.output.resolve().parents:
         raise ValueError("Output family cannot be nested inside its source")
     if not torch.cuda.is_available():
         raise RuntimeError("Adapter training requires a CUDA GPU")
+    if world_size > 1:
+        torch.distributed.barrier()
     torch.manual_seed(args.seed)
     torch.set_num_threads(4)
     metadata = json.loads((args.family / "family.json").read_text())
+    if metadata.get("format") == 2:
+        from dev_scripts.opcode_adapter_training import train_opcode_adapter
+        train_opcode_adapter(args, metadata)
+        if world_size > 1:
+            torch.distributed.destroy_process_group()
+        return
+    if world_size > 1:
+        raise ValueError("Distributed training requires a format-2 opcode model family")
     task = metadata["task"]
     bank, tokenizer, _, _ = load_family(args.family, task, torch.device("cuda:0"))
     by_file = defaultdict(list)
@@ -69,7 +97,7 @@ def main():
     (args.output / "family.json").write_text(json.dumps(updated, indent=2) + "\n")
     parameters = bank.trainable(version)
     bank.model.config.use_cache = False
-    history = train_steps(bank.model, tokenizer, {version: list(by_file.values())}, (version,), args.steps, args.batch_size, args.accumulation, 3e-4, args.seed, parameters)
+    history = train_steps(bank.model, tokenizer, {version: list(by_file.values())}, (version,), args.steps or 600, args.batch_size, args.accumulation, 3e-4, args.seed, parameters)
     relative = f"adapters/{version}"
     bank.save(version, args.output / relative)
     updated["versions"] = sorted(set(metadata["versions"]) | {version}, key=lambda text: PythonVersion(text).as_tuple())

@@ -225,6 +225,22 @@ class SharedModelTests(unittest.TestCase):
         self.assertEqual(self.model.query.active, "py3_9")
         self.assertNotIn("3.15", self.bank.specs)
 
+    def test_statement_adapter_can_use_unadapted_shared_segmenter(self):
+        config = {"SHARED_BACKBONES": {"STATEMENT_MODEL": "statement", "SEGMENTATION_MODEL": "control-segmentation", "USE_ADAPTERS": True, "USE_SEGMENTATION_ADAPTERS": False}}
+        pipeline = object()
+        metadata = {"source_prefix": "Python {version}: "}
+        load_models.cache_clear()
+        with mock.patch.object(Path, "open", mock.mock_open(read_data="")), mock.patch("pylingual.models.yaml.safe_load", return_value=config), mock.patch("pylingual.shared_models.load_version", return_value=(self.bank, object(), metadata)) as adapted, mock.patch("pylingual.shared_models.load_family", return_value=(self.bank, object(), {}, pipeline)) as unadapted:
+            segmenter, translator = load_models(Path("test-config.yaml"), PythonVersion("3.15"))
+            self.assertIsNone(segmenter.version)
+            self.assertIs(segmenter.pipeline, pipeline)
+            self.assertEqual(translator.version, "3.15")
+            self.assertEqual(adapted.call_args.args[1], "statement")
+            self.assertEqual(unadapted.call_args.args[1], "segmentation")
+            self.assertEqual(adapted.call_count, 1)
+            self.assertEqual(unadapted.call_count, 1)
+        load_models.cache_clear()
+
     def test_mixed_legacy_segmentation_and_shared_translation_routing(self):
         for use_adapters in (True, False):
             with self.subTest(use_adapters=use_adapters):
