@@ -32,6 +32,11 @@ else:
 
 logger = logging.getLogger(__name__)
 
+# statements longer than this (e.g. 3.14 annotation code segmented as one statement) can't be translated correctly
+# and take seconds each, running out of memory at every batch size first
+MAX_TRANSLATION_TOKENS = 2048
+TRANSLATION_FALLBACK = "'''Decompiler error: line too long for translation. Please decompile this statement manually.'''"
+
 # translator with caching
 class CacheTranslator:
     """
@@ -84,6 +89,9 @@ class CacheTranslator:
             try:
                 translation_results.extend(self._translate_and_decode(batch))
                 continue
+            except TimeoutError:
+                # the decompilation timed out, retrying would swallow it
+                raise
             except Exception as e:
                 error = repr(e)
             # handled outside the except block so tensors can be freed
@@ -92,7 +100,7 @@ class CacheTranslator:
             if batch_size == 1:
                 # fallback
                 logger.info(f"Could not translate statement ({error})")
-                translation_results.append("'''Decompiler error: line too long for translation. Please decompile this statement manually.'''")
+                translation_results.append(TRANSLATION_FALLBACK)
             else:
                 # retry with a smaller batch size
                 logger.info(f"Lowering translation batch size to {batch_size // 2} ({error})")
@@ -111,10 +119,16 @@ class CacheTranslator:
                     self.cache[translation_key] = translation_result
 
         # New are those not in the local cache
+        new = {norm for norm, _ in normalized_args if norm not in self.cache}
+        # a token is at least one character, so only long requests need tokenizing
+        for norm in [n for n in new if len(n) > MAX_TRANSLATION_TOKENS and len(self.tokenizer(n).input_ids) > MAX_TRANSLATION_TOKENS]:
+            logger.info(f"Not translating statement over {MAX_TRANSLATION_TOKENS} tokens")
+            self.cache[norm] = TRANSLATION_FALLBACK
+            new.discard(norm)
         new = TrackedDataset(
             TRANSLATION_STEP,
             # sorted by length so batches need less padding; order doesn't matter since results are keyed by request
-            sorted({norm for norm, _ in normalized_args if norm not in self.cache}, key=len),
+            sorted(new, key=len),
             check_timeout=check_timeout,
         )
 
@@ -247,3 +261,4 @@ def load_models(
     )
 
     return segmenter, CacheTranslator(translation_model, translation_tokenizer, python_version=version.as_str(), redis_cache_server_ip=redis_cache_server_ip, redis_port=redis_port, device=device)
+
