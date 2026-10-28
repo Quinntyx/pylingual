@@ -6,6 +6,7 @@ must be supplied explicitly. Run from the repository root with python -m.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import random
@@ -113,6 +114,10 @@ def file_metrics(args, selection):
     if len(completed) != len(rows) or not completed.issubset({row["relative"] for row in selection["files"]}):
         raise ValueError("Invalid resumed file results")
     model_stats = {}
+    profiler = None
+    if getattr(args, "stage_timing", False):
+        from dev_scripts.benchmark_stage_timing import RuntimeProfiler, aggregate_timings
+        profiler = RuntimeProfiler()
     config = args.config or Path(__file__).resolve().parents[1] / "pylingual" / "decompiler_config.yaml"
     old_handler = signal.signal(signal.SIGALRM, expired)
     try:
@@ -121,6 +126,7 @@ def file_metrics(args, selection):
                 continue
             started = time.monotonic()
             result = {**item, "success": False, "code_objects": 0, "equal_code_objects": 0, "phase": "model_load"}
+            timer = None
             try:
                 if item["version"] not in model_stats:
                     segmenter, translator = load_models(config_file=config, version=PythonVersion(item["version"]))
@@ -128,6 +134,13 @@ def file_metrics(args, selection):
                     # workers keep models resident. Count actual live parameters.
                     models = {"statement": translator.model, "segmentation": segmenter.model}
                     model_stats[item["version"]] = {task: {"parameters": sum(p.numel() for p in model.parameters()), "parameter_bytes": sum(p.numel() * p.element_size() for p in model.parameters()), "class": type(model).__name__} for task, model in models.items()}
+                    if profiler is not None:
+                        has_cuda = any(p.is_cuda for model in models.values() for p in model.parameters())
+                        profiler.synchronize = torch.cuda.synchronize if has_cuda else lambda: None
+                        profiler.install(segmenter, translator)
+                        model_stats[item["version"]]["tokenizers"] = {
+                            task: {"class": type(wrapper.tokenizer).__name__, "is_fast": bool(getattr(wrapper.tokenizer, "is_fast", False))}
+                            for task, wrapper in (("segmentation", segmenter), ("statement", translator))}
                     model_stats[item["version"]]["allocated_cuda_bytes"] = torch.cuda.memory_allocated() if torch.cuda.is_available() else 0
                     (args.output / "model_stats.json").write_text(json.dumps(model_stats, indent=2) + "\n")
                     del models, segmenter, translator
@@ -136,7 +149,9 @@ def file_metrics(args, selection):
                 signal.alarm(args.timeout)
                 destination = args.output / "decompiled" / item["version"] / (hashlib.sha256(item["relative"].encode()).hexdigest()[:16] + ".py")
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                answer = decompile(args.dataset / item["relative"], destination, config_file=config, timeout=args.timeout)
+                timer = profiler.record() if profiler is not None else None
+                with timer if timer is not None else contextlib.nullcontext():
+                    answer = decompile(args.dataset / item["relative"], destination, config_file=config, timeout=args.timeout)
                 checks = answer.equivalence_results
                 object_checks = [check for check in checks if getattr(check, "bc_a", None) is not None]
                 result.update(success=bool(checks) and all(check.success for check in checks), verification_checks=len(checks), code_objects=len(object_checks), equal_code_objects=sum(check.success for check in object_checks))
@@ -148,6 +163,8 @@ def file_metrics(args, selection):
                 result.update(category="Timeout" if isinstance(exc, TimeoutError) else "Error", error=f"{type(exc).__name__}: {exc}", traceback=traceback.format_exc())
             finally:
                 signal.alarm(0)
+                if timer is not None and hasattr(timer, "elapsed"):
+                    result["timing"] = timer.result()
             result["seconds"] = round(time.monotonic() - started, 3)
             if result["phase"] == "decompilation":
                 result["inference_seconds"] = round(time.monotonic() - inference_started, 3)
@@ -155,8 +172,16 @@ def file_metrics(args, selection):
             with (args.output / "file_results.jsonl").open("a") as stream:
                 stream.write(json.dumps(result) + "\n")
             print(json.dumps({"file": len(rows), "of": len(selection["files"]), **{key: value for key, value in result.items() if key != "traceback"}}), flush=True)
+            if profiler is not None and (len(rows) % 25 == 0 or len(rows) == len(selection["files"])):
+                aggregate = aggregate_timings(rows)
+                temporary = args.output / "timing-summary.json.tmp"
+                temporary.write_text(json.dumps(aggregate, indent=2) + "\n")
+                temporary.replace(args.output / "timing-summary.json")
+                print(json.dumps({"timing_summary": aggregate}), flush=True)
     finally:
         signal.signal(signal.SIGALRM, old_handler)
+        if profiler is not None:
+            profiler.close()
     summary = {}
     for version in args.versions:
         subset = [row for row in rows if row["version"] == version]

@@ -95,7 +95,7 @@ def require_full_models(run,arm,versions):
 
 def fingerprints(run,arm,versions):
  repo=Path(__file__).resolve().parents[1];paths=set(repo.joinpath('pylingual').rglob('*.py'))
- paths.add(Path(__file__));paths.add(repo/'dev_scripts/evaluate_shared.py')
+ paths.add(Path(__file__));paths.add(repo/'dev_scripts/evaluate_shared.py');paths.add(repo/'dev_scripts/benchmark_stage_timing.py')
  for version in versions:
   families=[run/'controls'/version/'statement/checkpoint',run/'controls'/version/'segmentation/checkpoint',run/'control-tokenizers'/version] if arm=='control' else [family_directory(run,arm)/'statement',family_directory(run,arm)/'segmentation']
   for family in families:
@@ -143,6 +143,21 @@ def stratified_summary(rows,version):
  result['coverage_note']='Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode.'
  return {version:result}
 
+def instrumentation_provenance(run,repo):
+ path=run/'benchmark-instrumentation-manifest.json'
+ if not path.exists(): return None
+ document=json.loads(path.read_text());original=run/'source-manifest.json'
+ if sha(original)!=document['original_source_manifest_sha256']: raise ValueError('Training source manifest changed after instrumentation')
+ expected=dict(json.loads(original.read_text())['files']);overrides=document['overrides']
+ allowed={'dev_scripts/benchmark_full_retrain.py','dev_scripts/evaluate_shared.py','dev_scripts/benchmark_stage_timing.py'}
+ if set(overrides)!=allowed: raise ValueError('Instrumentation attempted to change production/training source')
+ for name,change in overrides.items():
+  if expected.get(name)!=change['original_sha256']: raise ValueError('Incorrect original instrumentation identity: '+name)
+  expected[name]=change['instrumented_sha256']
+ mismatched=[name for name,digest in expected.items() if not (repo/name).is_file() or sha(repo/name)!=digest]
+ if mismatched: raise ValueError('Benchmark source differs from frozen training source plus logging-only overlay: '+repr(mismatched))
+ return {'manifest_sha256':sha(path),'original_source_manifest_sha256':sha(original),'overrides':overrides}
+
 def unit(args):
  import torch
  from pylingual.models import load_models
@@ -152,13 +167,25 @@ def unit(args):
  selected=selection(args.run,args.version,args.dataset);pin(output/'selection.json',selected)
  config=output/'runtime.json';pin(config,configuration(args.run,args.arm,args.version))
  pin(output/'provenance.json',{'arm':args.arm,'version':args.version,'file_timeout_seconds':args.timeout,'precision':'FP32 inference',
-  'dataset':args.dataset,'release':DATASETS[args.dataset],'protocol_sha256':sha(args.run/'protocol.json'),'fingerprints':fingerprints(args.run,args.arm,[args.version]),'compiler_rpc':json.loads((args.run/'benchmark-compiler-rpc.json').read_text()),'compiler_route':json.loads((args.run/'benchmark-compiler-route.json').read_text())})
+  'stage_timing':bool(getattr(args,'stage_timing',False)),
+ 'instrumentation':instrumentation_provenance(args.run,Path(__file__).resolve().parents[1]) if getattr(args,'stage_timing',False) else None,
+ 'dataset':args.dataset,'release':DATASETS[args.dataset],'protocol_sha256':sha(args.run/'protocol.json'),'fingerprints':fingerprints(args.run,args.arm,[args.version]),'compiler_rpc':json.loads((args.run/'benchmark-compiler-rpc.json').read_text()),'compiler_route':json.loads((args.run/'benchmark-compiler-route.json').read_text())})
+ from dev_scripts.benchmark_stage_timing import TIMING_PROTOCOL
+ if getattr(args,'stage_timing',False): pin(output/'timing-protocol.json',TIMING_PROTOCOL)
+ started=time.perf_counter()
  pair=load_models(config_file=config,version=PythonVersion(args.version))
+ if getattr(args,'stage_timing',False) and torch.cuda.is_initialized(): torch.cuda.synchronize()
+ model_load_elapsed=time.perf_counter()-started
+ if getattr(args,'stage_timing',False):
+  import platform
+  pin(output/'timing-environment.json',{'host':platform.node(),'python':platform.python_version(),'torch':str(torch.__version__),'torch_threads':torch.get_num_threads(),'cpu_affinity_count':len(os.sched_getaffinity(0)) if hasattr(os,'sched_getaffinity') else os.cpu_count(),'rayon_num_threads':os.environ.get('RAYON_NUM_THREADS'),'tokenizers_parallelism':os.environ.get('TOKENIZERS_PARALLELISM'),'gpu':torch.cuda.get_device_name() if torch.cuda.is_initialized() else None,'gpu_total_bytes':torch.cuda.get_device_properties(0).total_memory if torch.cuda.is_initialized() else None,'scope':'This benchmark host, not necessarily the deployed four-core/2080 workers.'})
+  # A fresh worker startup is separate from the warm per-file denominator.
+  with (output/'model-startup.jsonl').open('a') as stream: stream.write(json.dumps({'model_load_seconds':model_load_elapsed})+'\n')
  diagnostic=args.output/'validation'/args.arm/args.version;diagnostic.mkdir(parents=True,exist_ok=True)
  with (diagnostic/'validation.lock').open('a') as lock:
   fcntl.flock(lock,fcntl.LOCK_EX)
   if not (diagnostic/'validation.json').exists(): validation(args,pair,diagnostic)
- settings=SimpleNamespace(output=output,config=config,versions=[args.version],dataset=dataset_directory(args.run,args.dataset),timeout=args.timeout,resume=True)
+ settings=SimpleNamespace(output=output,config=config,versions=[args.version],dataset=dataset_directory(args.run,args.dataset),timeout=args.timeout,resume=True,stage_timing=bool(getattr(args,'stage_timing',False)))
  if not (output/'summary.json').exists(): file_metrics(settings,selected)
  rows=[json.loads(line) for line in (output/'file_results.jsonl').open()]
  if len(rows)!=len(selected['files']) or len({r['relative'] for r in rows})!=len(rows): raise RuntimeError('Incomplete full-file benchmark')
@@ -213,7 +240,10 @@ def performance(args):
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--run',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
  p.add_argument('--arm',choices=AVAILABLE_ARMS,required=True);p.add_argument('--dataset',choices=DATASETS,default='v2');p.add_argument('--version',choices=VERSIONS);p.add_argument('--performance',action='store_true');p.add_argument('--timeout',type=int,default=300)
+ p.add_argument('--stage-timing',action=argparse.BooleanOptionalAction,default=None,help='Log exclusive per-file/aggregate stage wall times; optional run/benchmark-timing.json enables queued benchmarks')
  a=p.parse_args();a.run=a.run.resolve();a.output=a.output.resolve()
+ marker=a.run/'benchmark-timing.json'
+ if a.stage_timing is None: a.stage_timing=marker.exists() and json.loads(marker.read_text()).get('enabled',False)
  if bool(a.version)==bool(a.performance): p.error('Choose version or performance')
  performance(a) if a.performance else unit(a)
 if __name__=='__main__':main()

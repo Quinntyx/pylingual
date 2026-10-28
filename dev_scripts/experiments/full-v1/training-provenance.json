@@ -1,0 +1,27 @@
+{
+  "training_host": "pylingual-train",
+  "source_sha256": {
+    "dev_scripts/full_ablation_training.py": "a9238b202756a8a6e55aaf23b5722bdc30471167b5908be83dbe5fadf4f0f58e",
+    "dev_scripts/shared_training.py": "c9d8faa22319561b9deb4c321ffe2600e97900cb977f83ef230b088ac3967a26",
+    "pylingual/lora.py": "441fba4e2bf9eb94e50db64d504b8c760a7608effabd5ea737d5b38844ce7d59"
+  },
+  "manifest_sha256": "82a68ce833e9e1dad8cc13bd5d1097edd723c1cdc791a65dce999f8bf6a34856",
+  "initial_statement_model": "Salesforce/codet5-base",
+  "initial_statement_model_commit": "02cd2d31bb7c6d0e4d91156167b2de044989c733",
+  "statement_backbone_training_versions": [
+    "3.6",
+    "3.7",
+    "3.8",
+    "3.9",
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14"
+  ],
+  "adapter_training_versions": [
+    "3.14",
+    "3.15"
+  ],
+  "note": "Training implementation unchanged since launching all six model families; benchmark worker instrumentation is separate."
+}
