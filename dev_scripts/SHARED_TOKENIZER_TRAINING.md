@@ -1069,3 +1069,21 @@ there, so the family is retrained from scratch:
   upstream's segmentation config. All other tokenizer settings are unchanged from
   section 2.
 - Datasets and checkpoints are published to public `syssec-utd` repos, per `AGENTS.md`.
+
+### Published tokenizer family v1 (2026-10-28)
+
+| Artifact | Hub repo | Revision |
+|---|---|---|
+| Corpus | `syssec-utd/pylingual-shared-tokenizer-corpus-v1` (dataset) | `2dd36151733c372cc7409a77af7066b172ad6e76` |
+| Tokenizers | `syssec-utd/pylingual-shared-tokenizer-v1` (`statement/`, `segmentation/`) | `d23233a4bb237dcc3b1660e46a42f9189eaf0f6c` |
+
+- Corpus: 100,000 files (90,000 PyPI + 10,000 CSN, 3.6–3.14), 9,333,947 statement rows and
+  1,415,940 segmentation rows. An independent audit found zero raw, canonical or NAS-identity
+  overlap with the eval sets, no duplicates, and no validation-bucket or 3.15 files.
+- Statement BPE: 11,280 learned tokens plus 233 opcodes plus 64 reserved slots = 11,577
+  (reserved IDs 11,513–11,576). A refit with a 60k ceiling produced identical tokens and IDs,
+  so the BPE ran out of merges (see section 10). The count is smaller than the
+  2026-10-19 family's 15,192, most likely because the upstream masking merged afterwards
+  produces fewer distinct literals.
+- Segmentation WordPiece: 29,703 + 233 + 64 = 30,000 (reserved IDs 29,936–29,999).
+- Real-sample unknown tokens: statement 0/30,898; segmentation 291/454,593 (0.06%).
