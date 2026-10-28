@@ -74,7 +74,7 @@ stock `Salesforce/codet5-base` tokenizer. Preserve and record the template's
 normalization, pre-tokenization, special tokens, and decoding rules.
 
 Give every known opcode in the training-version union an explicit atomic
-representation, and allocate the 16 future-opcode slots below. Specify whether the
+representation, and allocate the 64 future-opcode slots below. Specify whether the
 vocabulary budget includes these tokens; the recommended experiment keeps the total
 budget fixed and includes them. Verify that all assigned IDs fit the model's
 embedding table and do not collide with existing special tokens. Do not assume a
@@ -89,7 +89,7 @@ pipeline must be recorded as an explicit experimental factor.
 Follow [`segmentation/train_tokenizer.py`](segmentation/train_tokenizer.py): train
 WordPiece on pooled backbone bytecode, preserving its normalizer, `<SEP>` instruction
 splitting, structural tokens, and post-processor. Allocate its own known-opcode
-representations and 16 reserved IDs; the numeric IDs need not match CodeT5's.
+representations and 64 reserved IDs; the numeric IDs need not match CodeT5's.
 
 **Atomic opcode tokens must not accidentally become structural special tokens.**
 In particular, do not exclude all opcodes from masked-language-model masking or
@@ -101,13 +101,25 @@ Save both tokenizers, their training manifests, vocabulary/ID hashes, and opcode
 registries before model training. Never train or replace a tokenizer independently
 for a LoRA attached to the same backbone.
 
-## 3. Reserve 16 future-opcode slots
+## 3. Reserve 64 future-opcode slots
 
-Allocate exactly **16 unused opcode IDs per task** during initial tokenizer
+Allocate exactly **64 unused opcode IDs per task** (`RESERVED_SLOT_COUNT` in `pylingual/opcodes.py`) during initial tokenizer
 construction, for example with registry names `<future_opcode_00>` through
 `<future_opcode_15>`. Their actual integer IDs are recorded in the tokenizer
 manifest. No current instruction or synthetic instruction meaning is assigned to
 these slots during backbone training.
+
+Why 64 rather than the original 16: counting only instructions that can appear in a
+`.pyc` (specialized, instrumented and JIT-only opcodes excluded), each release added
+this many instructions absent from every earlier release:
+
+| 3.7 | 3.8 | 3.9 | 3.10 | 3.11 | 3.12 | 3.13 | 3.14 | 3.15b2 |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 2 | 5 | 11 | 8 | 29 | 24 | 10 | 12 | 0 |
+
+Unseen instructions accumulate while a backbone ages: a 3.6–3.10 backbone would miss
+29 at 3.11 and 58 by 3.15. Since the backbone is retrained only when accuracy drops,
+64 slots cover roughly five releases even through an overhaul like 3.11–3.12.
 
 For a future Python version:
 
@@ -134,10 +146,10 @@ different instructions because each has its own bindings and embedding updates.
 Within a version, assignments are one-to-one and stable. Pin old binding revisions
 so an adapter can always reproduce its original tokenization.
 
-The capacity is **16 instructions absent from the backbone vocabulary in any one
-supported version**, not 16 new instructions per release or 16 additions over the
+The capacity is **64 instructions absent from the backbone vocabulary in any one
+supported version**, not 64 new instructions per release or 64 additions over the
 family's lifetime. Surviving instructions introduced in earlier releases still count
-if the backbone never learned them. If a version needs more than 16, fail clearly:
+if the backbone never learned them. If a version needs more than 64, fail clearly:
 a larger vocabulary/new backbone family requires an explicit revision, not silent
 slot collisions, resizing, or fallback.
 
@@ -172,7 +184,7 @@ embedding(version, token_id) = frozen_base_embedding(token_id)
 - Switching adapters must switch the LoRA, opcode bindings, and embedding corrections
   together. Never apply corrections by overwriting the shared base weights.
 
-Storage is tiny: 16 rows × 768 dimensions × 2 bytes is **24 KiB per task/version**
+Storage is tiny: 64 rows × 768 dimensions × 2 bytes is **96 KiB per task/version**
 in FP16, at most; only bound rows need to be saved. Training optimizer state uses
 additional memory. This is explicitly **LoRA + new-token embeddings**, not pure LoRA.
 
@@ -226,7 +238,7 @@ normal per-version tokenizers are identical to the shared one.
 2. Build raw examples from the selected sources using normal conversion. Preserve
    every file's provenance and all produced rows; remove old one-row-per-file caps
    and stock-tokenizer length filters.
-3. Train both generic tokenizers, including the 16-slot allocations; freeze and hash
+3. Train both generic tokenizers, including the 64-slot allocations; freeze and hash
    them. Rebuild tokenized datasets, invalidating old tokenizer-dependent caches.
 4. Run a real smoke test using the production Trainer path and identical settings:
    encode, collate, forward, backward, optimize, save, reload, and infer. Check
@@ -244,7 +256,7 @@ normal per-version tokenizers are identical to the shared one.
    the tokenizer, remap known IDs, or load an adapter from another backbone.
 2. Generate the new version's bytecode from its own training partition, preserving
    the benchmark exclusions. Determine unseen instructions and allocate at most
-   16 slots. A version with no unseen instructions needs no embedding corrections.
+   64 slots. A version with no unseen instructions needs no embedding corrections.
 3. Save the binding revision and initialize that version's LoRA/corrections. A
    continuation must load **both** the previous LoRA and corrections with the same
    binding revision; training from scratch is a different operation.
@@ -265,7 +277,7 @@ family/
   family.json                 # task, backbone/tokenizer identity, registry, versions
   backbone/
   tokenizer/                  # immutable trained tokenizer
-  opcode_registry.json        # known instruction IDs and exactly 16 reserved IDs
+  opcode_registry.json        # known instruction IDs and exactly 64 reserved IDs
   adapters/<version>/
     adapter.json              # LoRA configuration and compatibility metadata
     adapter.pt                # LoRA tensors
@@ -552,7 +564,7 @@ remain future, separately authorized work.
 ### Components and safety properties
 
 - `pylingual/opcodes.py`: validates the immutable opcode registry, token IDs,
-  16-slot capacity and version-local bindings; rewrites only instruction opcode
+  64-slot capacity and version-local bindings; rewrites only instruction opcode
   fields. Operands, jump targets and future-annotation suffixes stay intact.
 - `pylingual/embedding_updates.py`: sparse, adapter-local **encoder-input**
   corrections. CodeT5's shared embedding table, decoder input embeddings and output
@@ -647,7 +659,7 @@ For explicit/reproducible assignment, use `--bindings bindings.json`, containing
 specified from the target interpreter's instruction specification; never mine
 held-out examples for them. Existing bindings cannot be changed on continuation.
 If a validation/runtime instruction is unbound, fail clearly instead of silently
-falling back to subwords. More than 16 distinct unseen instructions requires an
+falling back to subwords. More than 64 distinct unseen instructions requires an
 explicit new family/vocabulary revision.
 
 ### C. Train adapters independently, then assemble once
@@ -1041,3 +1053,19 @@ Current durable runtime records (outside the Git worktree):
 `training-supervisor.json`, and `benchmark-supervisor.json` under the active
 `full-retrain-20261020` workspace/run. These document a changed plan, **not
 completed LoRA training or completed benchmark measurements**.
+
+## 14. Restart after GPU4 loss (2026-10-28)
+
+`syssec-gpu4` went down on 2026-10-23. All trained backbones and adapters existed only
+there, so the family is retrained from scratch:
+
+- **Fresh 100k tokenizer corpus**, not the 2026-10-19 selection. `syssec-adwaith1:/data2`
+  is no longer usable, so matching the old sample was not a goal. Built locally from the
+  mounted NAS with `run_local_tokenizer_preparation.py` (native compilers 3.6.15–3.14.6,
+  seed `20261028`). The mix and the 3.15 hold-out are unchanged.
+- **Every `pylingual_eval_dataset` v1/v2 source is excluded**: NAS identity, raw SHA-512
+  and canonical hash. The 2026-10 corpus overlapped 326 v1 files per version.
+- **64 reserved slots** (section 3) and segmentation `model_max_length` 512, matching
+  upstream's segmentation config. All other tokenizer settings are unchanged from
+  section 2.
+- Datasets and checkpoints are published to public `syssec-utd` repos, per `AGENTS.md`.

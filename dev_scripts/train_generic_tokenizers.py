@@ -111,7 +111,7 @@ def main():
             backend.decoder = decoders.WordPiece(prefix="##")
             backend.post_processor = processors.TemplateProcessing(single="[CLS]:0 $A:0 [SEP]:0", pair="[CLS]:0 $A:0 [SEP]:0 $B:1 [SEP]:1",
                 special_tokens=[("[CLS]", backend.token_to_id("[CLS]")), ("[SEP]", backend.token_to_id("[SEP]"))])
-            tokenizer = PreTrainedTokenizerFast(tokenizer_object=backend, unk_token="[UNK]", pad_token="[PAD]", cls_token="[CLS]", sep_token="[SEP]", mask_token="[MASK]", model_max_length=1024)
+            tokenizer = PreTrainedTokenizerFast(tokenizer_object=backend, unk_token="[UNK]", pad_token="[PAD]", cls_token="[CLS]", sep_token="[SEP]", mask_token="[MASK]", model_max_length=512)
         base_vocab = len(tokenizer)
         tokenizer.add_tokens([AddedToken(token, normalized=False, special=False) for token in markers+list(RESERVED_TOKENS)])
         if len(tokenizer) > args.vocab_size:
