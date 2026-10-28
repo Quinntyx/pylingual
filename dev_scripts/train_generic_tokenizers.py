@@ -12,7 +12,7 @@ import time
 
 from tokenizers import AddedToken, Tokenizer, decoders, models, normalizers, pre_tokenizers, processors, trainers
 from transformers import AutoTokenizer, PreTrainedTokenizerFast
-from dev_scripts.tokenizer_opcode_registry import RESERVED_TOKENS, bind_bytecode, instruction_token_indices, known_token
+from dev_scripts.tokenizer_opcode_registry import RESERVED_SLOT_COUNT, RESERVED_TOKENS, bind_bytecode, instruction_token_indices, known_token
 
 
 def corpus_iterator(entries, task):
@@ -33,8 +33,8 @@ def verify(tokenizer, known, registry):
         if tokenizer(token, add_special_tokens=False)["input_ids"] != [token_id]:
             raise ValueError("Opcode marker is not atomic: "+token)
     reserved = [tokenizer.convert_tokens_to_ids(token) for token in RESERVED_TOKENS]
-    if reserved != list(range(reserved[0], reserved[0]+16)):
-        raise ValueError("Reserved IDs are not one contiguous16-slot range")
+    if reserved != list(range(reserved[0], reserved[0]+RESERVED_SLOT_COUNT)):
+        raise ValueError(f"Reserved IDs are not one contiguous {RESERVED_SLOT_COUNT}-slot range")
     original = "LOAD_CONST , LOAD_FAST <SEP> RETURN_VALUE"
     mapped = bind_bytecode(original, known)
     if mapped != known_token("LOAD_CONST")+" , LOAD_FAST <SEP> "+known_token("RETURN_VALUE"):
@@ -44,12 +44,12 @@ def verify(tokenizer, known, registry):
     if reserved[0] not in encoded["input_ids"] or not {0, 1}.issubset(set(indices)):
         raise ValueError("Future opcode or instruction alignment failed")
     try:
-        bind_bytecode("FUTURE_OPCODE_SMOKE", known, {f"NEW_{i}": i for i in range(17)})
+        bind_bytecode("FUTURE_OPCODE_SMOKE", known, {f"NEW_{i}": i for i in range(RESERVED_SLOT_COUNT+1)})
     except ValueError:
         pass
     else:
-        raise ValueError("17th future opcode did not fail")
-    return {"atomic_known_tokens": len(known), "atomic_reserved_tokens": 16,
+        raise ValueError("Over-capacity future opcode binding did not fail")
+    return {"atomic_known_tokens": len(known), "atomic_reserved_tokens": RESERVED_SLOT_COUNT,
             "reserved_ids": reserved, "operand_preservation": True,
             "future_binding_and_instruction_alignment": True, "overflow_rejected": True}
 
@@ -90,7 +90,7 @@ def main():
                "compiler_provenance_sha256": hashlib.sha256(args.compiler_provenance.read_bytes()).hexdigest(),
                "total_vocab_budget": args.vocab_size, "fitted_base_vocab_budget": fitting_vocab,
                "known_opcode_count": len(known), "observed_opcode_count": len(observed),
-               "unobserved_known_opcodes": sorted(known-observed), "reserved_slots": 16,
+               "unobserved_known_opcodes": sorted(known-observed), "reserved_slots": RESERVED_SLOT_COUNT,
                "host": platform.node(), "cpu_threads": __import__("os").cpu_count(),
                "packages": {name: importlib.metadata.version(name) for name in ("transformers", "tokenizers", "xdis")},
                "tasks": {}}

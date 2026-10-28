@@ -7,7 +7,16 @@ import json
 from pathlib import Path
 
 SEPARATOR = " <SEP> "
-RESERVED_TOKENS = tuple(f"<future_opcode_{i:02d}>" for i in range(16))
+# 16 slots proved too few: CPython 3.11 alone added 29 pyc-visible instructions and 3.12
+# another 24, so a backbone that ages across releases needs headroom (see SHARED_TOKENIZER_TRAINING.md).
+RESERVED_SLOT_COUNT = 64
+
+
+def reserved_token(index: int) -> str:
+    return f"<future_opcode_{index:02d}>"
+
+
+RESERVED_TOKENS = tuple(reserved_token(i) for i in range(RESERVED_SLOT_COUNT))
 # Normal model views prefix jump/exception targets before the actual opcode.
 # Statement rows can replace numeric target offsets with TARGET_N labels.
 OPCODE_FIELD = re.compile(
@@ -27,17 +36,18 @@ def known_token(name: str) -> str:
     return f"<opcode:{name}>"
 
 
-def bind_bytecode(bytecode: str, known: set[str], bindings: dict[str, int] | None = None) -> str:
+def bind_bytecode(bytecode: str, known: set[str], bindings: dict[str, int] | None = None,
+                  capacity: int = RESERVED_SLOT_COUNT) -> str:
     """Replace only each instruction's opcode field; keep operands verbatim.
 
-    Bindings map future mnemonic -> slot index 0..15, not arbitrary vocabulary IDs.
+    Bindings map future mnemonic -> slot index 0..capacity-1, not arbitrary vocabulary IDs.
     The saved registry supplies the immutable ID of each placeholder.
     """
     bindings = bindings or {}
-    if len(bindings) > 16 or len(set(bindings.values())) != len(bindings):
+    if len(bindings) > capacity or len(set(bindings.values())) != len(bindings):
         raise ValueError("Future opcode bindings exceed capacity or reuse a slot")
-    if any(type(index) is not int or not 0 <= index < 16 for index in bindings.values()):
-        raise ValueError("Future opcode slot outside 0..15")
+    if any(type(index) is not int or not 0 <= index < capacity for index in bindings.values()):
+        raise ValueError(f"Future opcode slot outside 0..{capacity - 1}")
     if known.intersection(bindings):
         raise ValueError("Cannot remap an existing known opcode")
     result = []
@@ -49,7 +59,7 @@ def bind_bytecode(bytecode: str, known: set[str], bindings: dict[str, int] | Non
         if name in known:
             replacement = known_token(name)
         elif name in bindings:
-            replacement = RESERVED_TOKENS[bindings[name]]
+            replacement = reserved_token(bindings[name])
         else:
             raise ValueError(f"Unbound opcode: {name}")
         result.append(instruction[:match.start(2)] + replacement + instruction[match.end(2):])
@@ -108,14 +118,16 @@ class OpcodeRegistry:
             raise ValueError("Unsupported opcode registry")
         self.known = self.data.get("known_opcodes", {})
         slots = self.data.get("reserved_slots", [])
-        if not isinstance(self.known, dict) or not self.known or len(slots) != 16:
-            raise ValueError("Registry requires known opcodes and exactly 16 reserved slots")
+        if not isinstance(self.known, dict) or not self.known or not slots:
+            raise ValueError("Registry requires known opcodes and reserved slots")
+        # Capacity comes from the saved registry so older 16-slot families still load.
+        self.capacity = len(slots)
         self.slots = {}
         for item in slots:
             index = item.get("slot")
-            if type(index) is not int or not 0 <= index < 16 or index in self.slots:
+            if type(index) is not int or not 0 <= index < self.capacity or index in self.slots:
                 raise ValueError("Invalid or duplicate reserved slot")
-            if item.get("token") != RESERVED_TOKENS[index]:
+            if item.get("token") != reserved_token(index):
                 raise ValueError("Reserved opcode token mismatch")
             self.slots[index] = item
         entries = list(self.known.values()) + list(self.slots.values())
@@ -149,9 +161,9 @@ class OpcodeRegistry:
             raise ValueError("Opcode bindings must be a mnemonic-to-slot mapping")
         for name in bindings:
             known_token(name)
-        if any(type(slot) is not int or not 0 <= slot < 16 for slot in bindings.values()):
-            raise ValueError("Future opcode slot outside 0..15")
-        if len(bindings) > 16 or len(set(bindings.values())) != len(bindings):
+        if any(type(slot) is not int or not 0 <= slot < self.capacity for slot in bindings.values()):
+            raise ValueError(f"Future opcode slot outside 0..{self.capacity - 1}")
+        if len(bindings) > self.capacity or len(set(bindings.values())) != len(bindings):
             raise ValueError("Future opcode bindings exceed capacity or reuse a slot")
         if set(self.known).intersection(bindings):
             raise ValueError("Cannot remap an existing known opcode")
@@ -165,4 +177,4 @@ class OpcodeRegistry:
         return sorted(self.slots[slot]["id"] for slot in self.validate_bindings(bindings).values())
 
     def bind(self, bytecode, bindings=None):
-        return bind_bytecode(bytecode, set(self.known), self.validate_bindings(bindings or {}))
+        return bind_bytecode(bytecode, set(self.known), self.validate_bindings(bindings or {}), self.capacity)

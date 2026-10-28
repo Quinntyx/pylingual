@@ -1,11 +1,11 @@
 import unittest
-from dev_scripts.tokenizer_opcode_registry import RESERVED_TOKENS, bind_bytecode, known_token, opcode_names
+from dev_scripts.tokenizer_opcode_registry import RESERVED_SLOT_COUNT, RESERVED_TOKENS, bind_bytecode, known_token, opcode_names
 
 
 class OpcodeRegistryTests(unittest.TestCase):
     def test_capacity(self):
-        self.assertEqual(len(RESERVED_TOKENS), 16)
-        self.assertEqual(len(set(RESERVED_TOKENS)), 16)
+        self.assertEqual(len(RESERVED_TOKENS), RESERVED_SLOT_COUNT)
+        self.assertEqual(len(set(RESERVED_TOKENS)), RESERVED_SLOT_COUNT)
 
     def test_only_opcode_fields_are_bound(self):
         known = {"LOAD_CONST", "RETURN_VALUE"}
@@ -41,10 +41,10 @@ class OpcodeRegistryTests(unittest.TestCase):
 
     def test_overflow(self):
         with self.assertRaises(ValueError):
-            bind_bytecode("NEW_0", set(), {f"NEW_{i}": i for i in range(17)})
+            bind_bytecode("NEW_0", set(), {f"NEW_{i}": i for i in range(RESERVED_SLOT_COUNT + 1)})
 
     def test_out_of_range(self):
-        for slot in (-1, 16):
+        for slot in (-1, RESERVED_SLOT_COUNT):
             with self.assertRaises(ValueError):
                 bind_bytecode("NEW", set(), {"NEW": slot})
 
