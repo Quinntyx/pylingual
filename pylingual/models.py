@@ -11,13 +11,15 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from pylingual.control_flow_reconstruction.model_view import is_straight_line
+from pylingual.control_flow_reconstruction.skeleton import GrammarLogitsProcessor, SkeletonGrammar, from_model_order, ref
 from pylingual.masking.model_disasm import (
     fix_jump_targets,
     normalize_masks,
     restore_masks,
 )
 from pylingual.utils.lists import flatten
-from pylingual.utils.tracked_list import TrackedDataset, TRANSLATION_STEP
+from pylingual.utils.tracked_list import TrackedDataset, TrackedList, CFLOW_MODEL_STEP, TRANSLATION_STEP
 from pylingual.utils.version import PythonVersion
 from pylingual.utils.lazy import lazy_import
 
@@ -129,6 +131,78 @@ class CacheTranslator:
             self.cache.popitem(last=False)
         return results
 
+# control flow model with grammar constrained decoding
+class SkeletonPredictor:
+    """
+    Predicts control flow skeletons from control flow model inputs (see control_flow_reconstruction/model_view.py)
+
+    :param model: The loaded control flow model, its config holds the limits and keywords it was trained with
+    :param tokenizer: The control flow model's tokenizer
+    """
+
+    BATCH_SIZE = 16
+
+    def __init__(self, model: transformers.T5ForConditionalGeneration, tokenizer: transformers.PreTrainedTokenizerFast, device="cpu"):
+        self.model = model
+        self.tokenizer = tokenizer
+        self.device = device
+        self.max_stmts = model.config.max_stmts
+        self.max_input_tokens = model.config.max_input_tokens
+        self.keywords = model.config.skeleton_keywords
+        self.model.to(self.device)
+
+    def _generate(self, batch: list[tuple[list[str], int]], num_beams: int) -> list[list[list[str]]]:
+        """Skeleton candidates of a single batch of requests"""
+        encoded = self.tokenizer([" ".join(tokens) for tokens, _ in batch], return_tensors="pt", padding=True).to(self.device)
+        n_stmts = [n for _, n in batch]
+        grammar = SkeletonGrammar(self.tokenizer, self.max_stmts, self.keywords)
+        with torch.no_grad():
+            output = self.model.generate(
+                input_ids=encoded.input_ids,
+                attention_mask=encoded.attention_mask,
+                num_beams=num_beams,
+                num_return_sequences=num_beams,
+                do_sample=False,
+                max_new_tokens=4 * max(n_stmts) + 16,
+                logits_processor=transformers.LogitsProcessorList([GrammarLogitsProcessor(grammar, n_stmts, num_beams)]),
+            )
+        decoded = self.tokenizer.batch_decode(output, skip_special_tokens=True)
+        return [[from_model_order(x.split()) for x in decoded[j * num_beams : (j + 1) * num_beams]] for j in range(len(batch))]
+
+    def __call__(self, requests: list[tuple[list[str], int] | None], num_beams: int = 1, check_timeout: callable = None) -> list[list[list[str]] | None]:
+        """
+        Candidate skeletons (source order, best first) for each (tokens, statement count) request.
+        None for no request, for inputs over the model's limits, and for batches the model fails on.
+        """
+        results = [None] * len(requests)
+        todo = []
+        for i, request in enumerate(requests):
+            if request is None:
+                continue
+            tokens, n = request
+            # straight-line code needs no model, however long it is
+            if is_straight_line(tokens):
+                results[i] = [[ref(k) for k in range(n)]]
+            elif n <= self.max_stmts and len(tokens) < self.max_input_tokens:
+                todo.append(i)
+        # sorted by length so batches need less padding
+        todo = TrackedList(CFLOW_MODEL_STEP, sorted(todo, key=lambda i: len(requests[i][0])), check_timeout=check_timeout)
+        for start in range(0, len(todo), self.BATCH_SIZE):
+            batch = todo[start : start + self.BATCH_SIZE]
+            try:
+                for i, skeletons in zip(batch, self._generate([requests[i] for i in batch], num_beams)):
+                    results[i] = skeletons
+                continue
+            except TimeoutError:
+                raise
+            except Exception as e:
+                error = repr(e)
+            # handled outside the except block so tensors can be freed; these code objects use the templates
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            logger.info(f"Control flow model failed on {len(batch)} code objects, using templates ({error})")
+        return results
+
 # offline support if models are downloaded
 def _cached_first(fn, *args, **kwargs):
     """Try the local HF cache first; fall back to downloading if it's missing."""
@@ -180,12 +254,13 @@ def load_models(
     redis_port: int = 1679,
     token=False,
     device: torch.device | None = None,
-) -> tuple[transformers.Pipeline, CacheTranslator]:
+) -> tuple[transformers.Pipeline, CacheTranslator, SkeletonPredictor | None]:
     logger.info(f"Loading models for {version}...")
     with config_file.open() as f:
         config = yaml.safe_load(f)
         seg_config = config[f"v{version}"]["SEGMENTATION_MODEL"]
         stmt_config = config[f"v{version}"]["STATEMENT_MODEL"]
+        cflow_config = config[f"v{version}"].get("CONTROL_FLOW_MODEL")
 
     #################################
     # Segmentation model components #
@@ -246,4 +321,27 @@ def load_models(
         token=token,
     )
 
-    return segmenter, CacheTranslator(translation_model, translation_tokenizer, python_version=version.as_str(), redis_cache_server_ip=redis_cache_server_ip, redis_port=redis_port, device=device)
+    translator = CacheTranslator(translation_model, translation_tokenizer, python_version=version.as_str(), redis_cache_server_ip=redis_cache_server_ip, redis_port=redis_port, device=device)
+
+    ##################################################
+    # Control flow model components, when configured #
+    ##################################################
+    cflow_model = None
+    if cflow_config is not None:
+        control_flow_model = _cached_first(
+            transformers.T5ForConditionalGeneration.from_pretrained,
+            cflow_config["REPO"],
+            revision=cflow_config["REVISION"],
+            token=token,
+        )
+
+        control_flow_tokenizer = _cached_first(
+            transformers.PreTrainedTokenizerFast.from_pretrained,
+            cflow_config["REPO"],
+            revision=cflow_config["REVISION"],
+            token=token,
+        )
+
+        cflow_model = SkeletonPredictor(control_flow_model, control_flow_tokenizer, device=device)
+
+    return segmenter, translator, cflow_model

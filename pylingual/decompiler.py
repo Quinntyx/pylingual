@@ -39,9 +39,11 @@ from typing import TYPE_CHECKING
 
 from xdis.magics import magicint2version
 
+from pylingual.control_flow_reconstruction.model_view import Statement, cflow_request
 from pylingual.control_flow_reconstruction.source import SourceContext, SourceLine
 from pylingual.control_flow_reconstruction.structure import bc_to_cft
-from pylingual.control_flow_reconstruction.cft import MetaTemplate
+from pylingual.control_flow_reconstruction.cft import ControlFlowTemplate, MetaTemplate
+from pylingual.control_flow_reconstruction.templates.Skeleton import SkeletonTemplate
 from pylingual.equivalence_check import PatchedPYC, TestResult, compare_pyc
 from pylingual.models import CacheTranslator, load_models
 from pylingual.utils.generate_bytecode import CompileError, PyenvError, compile_version
@@ -57,11 +59,14 @@ from pylingual.utils.tracked_list import CFLOW_STEP, CORRECTION_STEP, SEGMENTATI
 if TYPE_CHECKING:
     import transformers
     from pylingual.editable_bytecode.Instruction import Inst
+    from pylingual.models import SkeletonPredictor
 
 logger = logging.getLogger(__name__)
 
 bytecode_separator = " <SEP> "
 lno_regex = re.compile(r"(?<=line )\d+")
+# control flow model candidates tried for a failing code object
+CFLOW_BEAMS = 4
 
 
 def has_comp_error(results: list[TestResult]) -> bool:
@@ -117,9 +122,10 @@ class Decompiler:
     :param version: The python version
     :param top_k: Value of k to use for top k segmentation
     :param trust_lnotab: Decides whether or not to use line number information
+    :param cflow_model: Control flow model, or None to use the control flow templates only
     """
 
-    def __init__(self, pyc: PYCFile, segmenter: transformers.Pipeline, translator: CacheTranslator, version: PythonVersion, top_k=10, trust_lnotab=False, timeout=None):
+    def __init__(self, pyc: PYCFile, segmenter: transformers.Pipeline, translator: CacheTranslator, version: PythonVersion, top_k=10, trust_lnotab=False, timeout=None, cflow_model: SkeletonPredictor | None = None):
         self.pyc = pyc
         self.name = pyc.pyc_path.name if pyc.pyc_path is not None else repr(pyc)
         self.segmenter = segmenter
@@ -130,6 +136,9 @@ class Decompiler:
         self.tmpn = 0
         self.trust_lnotab = trust_lnotab
         self.timeout = timeout
+        self.cflow_model = cflow_model
+        self.cflow_requests = []
+        self.cflow_results = []
         self.start_time = time.time()
         self.unmask_cache = {}
         self.unmask_cache_size = None
@@ -151,6 +160,8 @@ class Decompiler:
             self.run_translation()
             self.check_timeout()
             self.unmask_lines()
+            self.check_timeout()
+            self.run_cflow_prediction()
             self.check_timeout()
             self.run_cflow_reconstruction()
             self.check_timeout()
@@ -191,12 +202,12 @@ class Decompiler:
                 bad_idx = self.find_comp_error_cause(self.equivalence_results)
                 if bad_idx is None or bad_idx in corrected_comp_errors:
                     return
-                if not self.correct_segmentation(bad_idx, from_comp_error=True):
+                if not (self.correct_cflow(bad_idx, from_comp_error=True) or self.correct_segmentation(bad_idx, from_comp_error=True)):
                     return
                 corrected_comp_errors.add(bad_idx)
             failed = TrackedList(CORRECTION_STEP, [i for i in range(len(self.ordered_bytecodes)) if (result := self.result_for_bytecode(i, self.equivalence_results)) is not None and not result.success])
             for i in failed:
-                if self.correct_segmentation(i):
+                if self.correct_cflow(i) or self.correct_segmentation(i):
                     continue
                 # other fixes...
         except Exception as e:
@@ -209,6 +220,7 @@ class Decompiler:
         try:
             equivalence_results = self.equivalence_results
             purged = []
+            recovered = set()
             while has_comp_error(equivalence_results):
                 bad_idx = self.find_comp_error_cause(equivalence_results)
                 if bad_idx is None:
@@ -220,6 +232,12 @@ class Decompiler:
                     logger.info(f"{bad_bc.name} was already purged, unable to fix compile errors")
                     self.source_context.purged_cfts = []
                     return []
+                # once other code objects are purged, a wrong skeleton can be the only error left
+                if purged and bad_idx not in recovered:
+                    recovered.add(bad_idx)
+                    if self.correct_cflow(bad_idx, from_comp_error=True):
+                        equivalence_results = self.equivalence_results
+                        continue
                 logger.info(f"Purging {bad_bc.name}")
                 purged.append(bad_idx)
                 self.source_context.purge(bad_bc.codeobj)
@@ -351,10 +369,22 @@ class Decompiler:
             e.add_note("From translation")
             raise
 
+    def run_cflow_prediction(self):
+        if self.cflow_model is None:
+            self.cflow_requests, self.cflow_results = [None] * len(self.ordered_bytecodes), [None] * len(self.ordered_bytecodes)
+            return
+        logger.info(f"Predicting control flow for {self.name}...")
+        try:
+            self.cflow_requests = [cflow_request(bc, self.source_lines) for bc in self.ordered_bytecodes]
+            self.cflow_results = self.predict_skeletons(self.cflow_requests)
+        except Exception as e:
+            e.add_note("From control flow prediction")
+            raise
+
     def run_cflow_reconstruction(self):
         logger.info(f"Reconstructing control flow for {self.name}...")
         try:
-            cfts = {bc.codeobj: bc_to_cft(bc, self.source_lines) for bc in TrackedList(CFLOW_STEP, self.ordered_bytecodes, check_timeout=self.check_timeout)}
+            cfts = {self.ordered_bytecodes[i].codeobj: self.make_cft(i) for i in TrackedList(CFLOW_STEP, list(range(len(self.ordered_bytecodes))), check_timeout=self.check_timeout)}
             self.source_context = SourceContext(self.pyc, self.source_lines, cfts)
             version = magicint2version.get(self.pyc.magic, "?")
             time = datetime.datetime.fromtimestamp(self.pyc.timestamp, datetime.UTC).strftime("%Y-%m-%d %H:%M:%S UTC") if self.pyc.timestamp is not None else "unknown"
@@ -387,6 +417,17 @@ class Decompiler:
             else:
                 translation_requests[-1] += bytecode_separator + model_view
         return translation_requests
+
+    # candidate skeletons for each (statements, tokens) request, None where the templates should be used
+    def predict_skeletons(self, requests: list[tuple[list[Statement], list[str]] | None], num_beams=1) -> list[list[list[str]] | None]:
+        return self.cflow_model([(r[1], len(r[0])) if r else None for r in requests], num_beams=num_beams, check_timeout=self.check_timeout)
+
+    # the model's best skeleton for the ith code object, or the templates
+    def make_cft(self, i: int) -> ControlFlowTemplate:
+        bc = self.ordered_bytecodes[i]
+        if self.cflow_results[i]:
+            return SkeletonTemplate(bc, self.cflow_requests[i][0], self.cflow_results[i][0])
+        return bc_to_cft(bc, self.source_lines)
 
     def update_source_lines(self):
         self.source_lines = list(itertools.chain.from_iterable(self.translation_results))
@@ -424,6 +465,48 @@ class Decompiler:
         codeobj = self.ordered_bytecodes[i].codeobj
         return next((r for r in results if isinstance(r, TestResult) and r.bc_a is not None and r.bc_a.codeobj == codeobj), None)
 
+    def passing_bytecodes(self) -> list[int]:
+        return [j for j in range(len(self.ordered_bytecodes)) if (r := self.result_for_bytecode(j, self.equivalence_results)) is not None and r.success]
+
+    # whether results fix the ith code object without breaking a passing one
+    def accepts(self, i: int, results: list[TestResult], passing: list[int], from_comp_error: bool) -> bool:
+        if from_comp_error:
+            improved = bool(results) and (not has_comp_error(results) or self.find_comp_error_cause(results) not in [None, i])
+        else:
+            improved = not has_comp_error(results) and (r := self.result_for_bytecode(i, results)) is not None and r.success
+        return improved and all((r := self.result_for_bytecode(j, results)) is not None and r.success for j in passing)
+
+    # try the control flow model's other candidates for the ith code object, then the templates
+    # if none passes, correct_segmentation tries other segmentations, asking the model again for each
+    def correct_cflow(self, i: int, from_comp_error=False) -> bool:
+        bc = self.ordered_bytecodes[i]
+        original = self.source_context.cfts[bc.codeobj]
+        if not isinstance(original, SkeletonTemplate):
+            return False
+        logger.info(f"Trying to fix control flow for {bc.name}")
+        try:
+            passing = self.passing_bytecodes()
+            previous_indented_source = self.indented_source
+            # beam search only runs for code objects that fail
+            beams = [tokens for tokens in self.predict_skeletons([self.cflow_requests[i]], num_beams=CFLOW_BEAMS)[0] or [] if tokens != original.tokens]
+            for tokens in [*beams, None]:
+                # the templates come last, built only if no beam passes
+                candidate = bc_to_cft(bc, self.source_lines) if tokens is None else SkeletonTemplate(bc, original.stmts, tokens)
+                self.source_context.update_cft(bc, candidate)
+                self.reconstruct_source()
+                equivalence_results = self.check_reconstruction(self.indented_source)
+                if self.accepts(i, equivalence_results, passing, from_comp_error):
+                    self.equivalence_results = equivalence_results
+                    logger.info(f"Updated control flow for {bc.name}")
+                    return True
+            self.source_context.update_cft(bc, original)
+            self.indented_source = previous_indented_source
+            logger.info(f"Could not fix control flow for {bc.name}")
+            return False
+        except Exception as e:
+            e.add_note("From control flow correction")
+            raise
+
     # try to correct the segmentation of the ith code object
     def correct_segmentation(self, i: int, from_comp_error=False) -> bool:
         if len(self.segmentation_results) <= i or not self.segmentation_results[i]:
@@ -433,10 +516,11 @@ class Decompiler:
         logger.info(f"Trying to fix segmentation for {self.ordered_bytecodes[i].name}")
         original_prediction = [r["entity"] for r in self.segmentation_results[i]]
         original_translation = self.translation_results[i]
+        previous_request, previous_result = self.cflow_requests[i], self.cflow_results[i]
         previous_lines, previous_indented_source = self.source_lines, self.indented_source
         previous_context = self.source_context.snapshot()
         previous_starts = [(inst, inst.starts_line) for insts in self.ordered_instructions for inst in insts]
-        passing = [j for j in range(len(self.ordered_bytecodes)) if (r := self.result_for_bytecode(j, self.equivalence_results)) is not None and r.success]
+        passing = self.passing_bytecodes()
         strategy = functools.partial(m_deep_top_k, priority_function=naive_confidence_priority, m=2, k=self.top_k + 1)
         # skip first prediction since it is the same as original
         for k, prediction in enumerate(get_top_k_predictions(strategy, self.segmentation_results[i])[1:], start=1):
@@ -458,16 +542,15 @@ class Decompiler:
                     e.add_note("From translation")
                     raise
                 self.source_context.update_lines(self.source_lines)
+                bc = self.ordered_bytecodes[i]
+                # skeletons refer to the old statements, so predict again; templates follow the new lines by themselves
+                if isinstance(self.source_context.cfts[bc.codeobj], SkeletonTemplate):
+                    self.cflow_requests[i] = cflow_request(bc, self.source_lines)
+                    self.cflow_results[i] = self.predict_skeletons([self.cflow_requests[i]])[0]
+                    self.source_context.update_cft(bc, self.make_cft(i))
                 self.reconstruct_source()
                 equivalence_results = self.check_reconstruction(self.indented_source)
-                if from_comp_error:
-                    improved = bool(equivalence_results) and (not has_comp_error(equivalence_results) or self.find_comp_error_cause(equivalence_results) not in [None, i])
-                else:
-                    improved = False
-                if not from_comp_error and not has_comp_error(equivalence_results):
-                    result = self.result_for_bytecode(i, equivalence_results)
-                    improved = result is not None and result.success
-                accepted = improved and all((r := self.result_for_bytecode(j, equivalence_results)) is not None and r.success for j in passing)
+                accepted = self.accepts(i, equivalence_results, passing, from_comp_error)
                 if accepted:
                     self.equivalence_results = equivalence_results
                     self.highest_k_used = max(self.highest_k_used, k)
@@ -480,6 +563,7 @@ class Decompiler:
                     for inst, starts_line in previous_starts:
                         inst.starts_line = starts_line
                     self.translation_results[i] = original_translation
+                    self.cflow_requests[i], self.cflow_results[i] = previous_request, previous_result
                     self.source_lines = previous_lines
                     self.indented_source = previous_indented_source
                     self.source_context.restore(previous_context)
@@ -549,13 +633,13 @@ def decompile(
     if not config_file.exists():
         raise FileNotFoundError(f"Decompiler config {config_file} not found")
 
-    segmenter, translator = load_models(config_file, pversion, redis_cache_server_ip, redis_port)
+    segmenter, translator, cflow_model = load_models(config_file, pversion, redis_cache_server_ip, redis_port)
 
     if save_to:
         logger.info(f"Decompiling pyc {pyc.pyc_path.resolve() if pyc.pyc_path else repr(pyc)} to {save_to.resolve()}")
     else:
         logger.info(f"Decompiling pyc {pyc.pyc_path.resolve() if pyc.pyc_path else repr(pyc)}")
-    decompiler = Decompiler(pyc, segmenter, translator, pversion, top_k, trust_lnotab, timeout)
+    decompiler = Decompiler(pyc, segmenter, translator, pversion, top_k, trust_lnotab, timeout, cflow_model=cflow_model)
     result = decompiler()
 
     logger.info("Decompilation complete")
