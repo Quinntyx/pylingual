@@ -236,8 +236,39 @@ class SkeletonPredictor(ControlFlowPredictor):
         return [[from_model_order(x.split()) for x in decoded[j * num_beams : (j + 1) * num_beams]] for j in range(len(batch))]
 
 
+class ChartPredictor(ControlFlowPredictor):
+    """
+    Statement encoder with a chart parser (see control_flow_reconstruction/chart_model.py)
+
+    :param model: The loaded ChartParser, its config holds the limits and keywords it was trained with
+    :param tokenizer: The control flow model's tokenizer
+    """
+
+    def __init__(self, model, tokenizer: transformers.PreTrainedTokenizerFast, device="cpu"):
+        super().__init__(model.config.max_stmts, model.config.max_input_tokens)
+        self.model = model.eval()
+        self.tokenizer = tokenizer
+        self.device = device
+        self.model.to(self.device)
+
+    @classmethod
+    def from_pretrained(cls, repo: str, revision: str | None = None, token=False, device="cpu") -> ChartPredictor:
+        from pylingual.control_flow_reconstruction.chart_model import ChartParser
+
+        model = _cached_first(ChartParser.from_pretrained, repo, revision=revision, token=token)
+        tokenizer = _cached_first(transformers.PreTrainedTokenizerFast.from_pretrained, repo, revision=revision, token=token)
+        return cls(model, tokenizer, device=device)
+
+    def _generate(self, batch: list[CflowRequest], num_beams: int) -> list[list[list[str]]]:
+        encoded = self.tokenizer([" ".join(r.tokens) for r in batch], return_tensors="pt", padding=True).to(self.device)
+        with torch.no_grad():
+            vectors, counts = self.model.statements(encoded.input_ids, encoded.attention_mask)
+            successors = self.model.successors(vectors, counts)
+            return [self.model.skeletons(r, v[: r.n], s, num_beams) for r, v, s in zip(batch, vectors, successors)]
+
+
 # ARCH of a CONTROL_FLOW_MODEL entry -> its predictor
-PREDICTORS: dict[str, type[ControlFlowPredictor]] = {"t5": SkeletonPredictor}
+PREDICTORS: dict[str, type[ControlFlowPredictor]] = {"t5": SkeletonPredictor, "chart": ChartPredictor}
 
 # offline support if models are downloaded
 def _cached_first(fn, *args, **kwargs):
