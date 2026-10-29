@@ -67,10 +67,11 @@ def run(root, name, argv, attempts=3):
     log.parent.mkdir(parents=True, exist_ok=True)
     environment = {**os.environ, "PYTHONPATH": str(REPO), "TOKENIZERS_PARALLELISM": "false"}
     for attempt in range(1, attempts+1):
+        command = argv()
         with log.open("a") as stream:
-            stream.write(json.dumps({"lane_attempt": attempt, "argv": argv, "time": time.time()})+"\n")
+            stream.write(json.dumps({"lane_attempt": attempt, "argv": command, "time": time.time()})+"\n")
             stream.flush()
-            code = subprocess.run(argv(), stdout=stream, stderr=subprocess.STDOUT, cwd=REPO, env=environment).returncode
+            code = subprocess.run(command, stdout=stream, stderr=subprocess.STDOUT, cwd=REPO, env=environment).returncode
         if code == 0:
             return
         # Every retry resumes from the newest local or Hub checkpoint.
