@@ -3,8 +3,8 @@
   "approved": false,
   "tokenizer": {"repo_id": "syssec-utd/pylingual-shared-tokenizer-v1", "revision": "d23233a4bb237dcc3b1660e46a42f9189eaf0f6c"},
   "backbone_corpus": {"repo_id": "syssec-utd/pylingual-shared-tokenizer-corpus-v1", "revision": "2dd36151733c372cc7409a77af7066b172ad6e76"},
-  "adapter_corpus": {"repo_id": "syssec-utd/pylingual-shared-adapter-corpus-v1", "revision": null},
-  "encoded": {"repo_id": "syssec-utd/pylingual-shared-encoded-v1", "revision": null},
+  "adapter_corpus": {"repo_id": "syssec-utd/pylingual-shared-adapter-corpus-v1", "revision": "920443b5a0c41cf9290cc97f432194ed6c409393"},
+  "encoded": {"repo_id": "syssec-utd/pylingual-shared-encoded-v1", "revision": "3d2a38f3fc2d6c617dbe262d353b0bd5fe10f88e"},
   "initialization": {"repo_id": "Salesforce/codet5-base", "revision": "02cd2d31bb7c6d0e4d91156167b2de044989c733"},
   "lanes": {"triplesec1-gpu": ["statement", "lora-3.14"], "triplesec2-gpu": ["segmentation", "lora-3.15"]},
   "stages": {
