@@ -57,6 +57,14 @@ uv run prepare_dataset.py sample_jsons/py312-sample-control-flow-data.json --sta
 uv run train_models.py --control-flow sample_jsons/py312-sample-control-flow.json --nproc_per_node 4
 ```
 
+Real code can instead be collected from the dataset NAS, as for the shared-backbone models: a data request with a `corpus` (`pypi` or `csn`) gets its sources from the NAS train splits, without held-out sources or the sources of the eval dataset releases in the JSON's `collect` section, and only sources that compile with the dataset's version (see `dataset_generation/collect_sources.py`). `sample_jsons/py312-sample-control-flow-nas-data.json` collects 50k files, 90% PyPI and 10% CodeSearchNet:
+
+```
+uv run prepare_dataset.py sample_jsons/py312-sample-control-flow-nas-data.json --stage collect --stage generate --stage compile --stage cflow
+```
+
+Models are compared on the [PyLingual evaluation dataset](https://github.com/syssec-utd/pylingual_eval_dataset) v1 (`git clone --branch v1.1.0 --depth 1`), whose `python-3.x` directories `bench_cflow.py` reads directly.
+
 Every skeleton a model gives must fit the block grammar (`pylingual/control_flow_reconstruction/block_grammar.py`), Python's block structure as a pushdown automaton, so the source rendered from it compiles. The dataset rows carry the statement `shapes` and `version` the grammar needs. To compare models on the same files, with the gold segmentation and lines:
 
 ```
