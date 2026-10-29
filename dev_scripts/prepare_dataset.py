@@ -14,9 +14,11 @@ from dataset_generation.compile_dataset import main as compile_dataset
 from dataset_generation.generate_csv import main as generate_csv
 from dataset_generation.validate_dataset import main as validate_dataset
 from dataset_generation.upload_dataset import main as upload_dataset
+from dataset_generation.generate_cflow import main as generate_cflow
 from pylingual.utils.get_logger import get_logger
 
 STAGES = ["generate", "compile", "csv", "validate", "upload"]
+OPTIONAL_STAGES = ["cflow"]
 
 
 @click.command(
@@ -27,8 +29,9 @@ STAGES = ["generate", "compile", "csv", "validate", "upload"]
 @click.option(
     "--stage",
     multiple=True,
-    type=click.Choice(STAGES),
-    help="Stage(s) to run. May be specified multiple times. Defaults to all stages.",
+    type=click.Choice(STAGES + OPTIONAL_STAGES),
+    help="Stage(s) to run. May be specified multiple times. Defaults to all stages. "
+    "cflow builds the control flow model dataset (run after compile; not part of the default stages).",
 )
 @click.option("--public", is_flag=True, default=False, help="Upload as a public dataset instead of private.")
 def main(json_path: str, stage: tuple[str, ...], public: bool):
@@ -48,6 +51,8 @@ def main(json_path: str, stage: tuple[str, ...], public: bool):
             validate_dataset([json_path], standalone_mode=False)
         elif s == "upload":
             upload_dataset((["--public"] if public else []) + [json_path], standalone_mode=False)
+        elif s == "cflow":
+            generate_cflow([json_path], standalone_mode=False)
 
 
 if __name__ == "__main__":
