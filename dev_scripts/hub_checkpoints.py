@@ -110,7 +110,8 @@ class HubCheckpointPush(TrainerCallback):
             self._advance()
 
     def on_step_end(self, args, state, control, **kwargs):
-        if state.is_world_process_zero and self.queued is not None:
+        # Record a finished upload as soon as it lands, not only at the next save.
+        if state.is_world_process_zero and (self.queued is not None or self.future is not None and self.future.done()):
             self._advance()
 
     def on_train_end(self, args, state, control, **kwargs):
