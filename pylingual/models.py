@@ -236,8 +236,29 @@ class SkeletonPredictor(ControlFlowPredictor):
         return [[from_model_order(x.split()) for x in decoded[j * num_beams : (j + 1) * num_beams]] for j in range(len(batch))]
 
 
+class TransitionPredictor(ControlFlowPredictor):
+    """
+    Statement encoder and grammar action decoder (see control_flow_reconstruction/transition.py)
+
+    :param model: The loaded TransitionModel, its config holds the limits it was trained with
+    """
+
+    def __init__(self, model, device="cpu"):
+        super().__init__(model.config.max_stmts, model.config.max_input_tokens)
+        self.model = model.to(device).eval()
+
+    @classmethod
+    def from_pretrained(cls, repo: str, revision: str | None = None, token=False, device="cpu") -> TransitionPredictor:
+        from pylingual.control_flow_reconstruction.transition import TransitionModel
+
+        return cls(_cached_first(TransitionModel.from_pretrained, repo, revision=revision, token=token), device=device)
+
+    def _generate(self, batch: list[CflowRequest], num_beams: int) -> list[list[list[str]]]:
+        return self.model.generate(batch, num_beams)
+
+
 # ARCH of a CONTROL_FLOW_MODEL entry -> its predictor
-PREDICTORS: dict[str, type[ControlFlowPredictor]] = {"t5": SkeletonPredictor}
+PREDICTORS: dict[str, type[ControlFlowPredictor]] = {"t5": SkeletonPredictor, "transition": TransitionPredictor}
 
 # offline support if models are downloaded
 def _cached_first(fn, *args, **kwargs):
