@@ -144,10 +144,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plan", type=Path, required=True)
     parser.add_argument("--root", type=Path, default=Path.home()/"pylingual-runs")
-    parser.add_argument("--lane", choices=("statement", "segmentation", "lora-3.14", "lora-3.15"), required=True)
+    parser.add_argument("--lane", choices=("statement", "segmentation", "lora-3.14", "lora-3.15"))
+    parser.add_argument("--print-lanes", metavar="HOST", help="Print the plan's lanes for HOST and exit")
     parser.add_argument("--smoke-steps", type=int, default=0, help="Pipeline check on smoke data with a throwaway plan only")
     args = parser.parse_args()
     plan = json.loads(args.plan.read_text())
+    if args.print_lanes:
+        print(" ".join(plan["lanes"][args.print_lanes]))
+        return
+    if args.lane is None:
+        parser.error("--lane is required")
     if args.smoke_steps and not plan.get("smoke_only"):
         raise ValueError("--smoke-steps requires a plan marked smoke_only (throwaway repos)")
     if not plan.get("approved") and not args.smoke_steps:

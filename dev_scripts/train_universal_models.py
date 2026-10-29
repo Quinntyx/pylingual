@@ -20,6 +20,7 @@ from transformers import set_seed
 from dev_scripts.resume_layout import checkpoint_world_size, validate_resume_layout
 from dev_scripts.loss_normalization import token_normalized_loss
 from dev_scripts import hub_checkpoints
+from dev_scripts.prepare_tokenizer_corpus import quotas
 from pylingual.opcodes import OpcodeRegistry
 
 LABELS={"B":0,"I":1,"E":2}
@@ -141,8 +142,9 @@ def main():
         if args.ordinary_version:
             if manifest["files"]!=54500 or manifest["versions"]!={args.ordinary_version:54500} or manifest["corpora"]!={"pypi":49050,"csn":5450}:
                 raise ValueError("Ordinary controls require exactly54,500single-version90/10trainingfiles")
-        elif manifest["files"]!=100000 or "3.15" in manifest["versions"]:
-            raise ValueError("Full universal training requires exactly100k files excluding3.15")
+        elif manifest["versions"]!={v:sum(c.values()) for v,c in quotas(manifest["files"]).items()} or \
+                manifest["corpora"]!={"pypi":manifest["files"]*9//10,"csn":manifest["files"]//10}:
+            raise ValueError("Full universal training requires a version-balanced 90/10 corpus over 3.6-3.14")
     args.output.mkdir(parents=True,exist_ok=True)
     tokenizer=AutoTokenizer.from_pretrained(args.tokenizer)
     registry=None if args.ordinary_version else OpcodeRegistry.load(args.tokenizer/"opcode_registry.json",tokenizer)

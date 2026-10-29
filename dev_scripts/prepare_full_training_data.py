@@ -65,8 +65,11 @@ def prepare(data, tokenizer, task, output, workers, limit=0, scope="universal", 
         raise ValueError("Duplicate source canonical")
     if limit:
         records = records[:limit]
-    elif scope == "universal" and (len(records)!=100000 or dict(Counter(row["corpus"] for row in records))!={"pypi":90000,"csn":10000}):
-        raise ValueError("Expected full 100k 90/10 source-file mixture")
+    elif scope == "universal":
+        from dev_scripts.prepare_tokenizer_corpus import quotas
+        cells = Counter((row["version"], row["corpus"]) for row in records)
+        if cells != Counter({(v, c): n for v, counts in quotas(len(records)).items() for c, n in counts.items()}):
+            raise ValueError("Expected a full version-balanced 90/10 source-file mixture")
     registry_path = tokenizer/"opcode_registry.json"
     bindings = {}
     if scope == "adapter":
