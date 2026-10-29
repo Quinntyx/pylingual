@@ -130,6 +130,7 @@ class Decompiler:
         self.tmpn = 0
         self.trust_lnotab = trust_lnotab
         self.timeout = timeout
+        self.check_cache: dict[str, list] = {}
         self.start_time = time.time()
         self.unmask_cache = {}
         self.unmask_cache_size = None
@@ -230,6 +231,8 @@ class Decompiler:
                     equivalence_results[equivalence_results.index(r)] = TestResult(False, "Compilation Error", r.bc_a, r.bc_b)
             self.source_context.purged_cfts = []
             return equivalence_results
+        except TimeoutError:
+            raise
         except:
             self.source_context.purged_cfts = []
             return []
@@ -238,6 +241,8 @@ class Decompiler:
         logger.info(f"Preprocessing bytecode for {self.name}...")
         try:
             Preprocessor().preprocess(self.pyc)
+        except TimeoutError:
+            raise
         except Exception as e:
             logger.warning(f"Preprocessing failed for {self.name}, continuing without container recovery: {e}")
 
@@ -401,6 +406,12 @@ class Decompiler:
 
     # compiles and compares result to original pyc
     def check_reconstruction(self, source: str) -> list[TestResult]:
+        # correction often renders the same source again, so reuse its results
+        if source not in self.check_cache:
+            self.check_cache[source] = self._check_reconstruction(source)
+        return list(self.check_cache[source])
+
+    def _check_reconstruction(self, source: str) -> list[TestResult]:
         logger.info(f"Checking decompilation for {self.name}...")
         src = self.tmpfile()
         pyc = self.tmpfile()
