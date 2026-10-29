@@ -11,6 +11,7 @@ from datasets import Dataset
 from transformers import Trainer, Seq2SeqTrainer, TrainingArguments, Seq2SeqTrainingArguments, DataCollatorForSeq2Seq, DataCollatorForTokenClassification, TrainerCallback
 from pylingual.opcodes import SEPARATOR, opcode_names, instruction_token_indices
 from pylingual.lora import adapter_key
+from dev_scripts import hub_checkpoints
 from pylingual.shared_models import load_family
 from pylingual.segmentation.sliding_window import sliding_window
 
@@ -94,6 +95,27 @@ def load_encoded_dataset(directory, selection, args, bank, tokenizer, metadata, 
     if len(data) != doc["encoded_rows"] or not len(data):
         raise ValueError("Encoded adapter row count changed")
     return data
+
+
+def adapter_card(repo_id, args, provenance, metadata):
+    hub = json.loads((args.encoded_data/"hub-source.json").read_text()) if getattr(args, "encoded_data", None) and (args.encoded_data/"hub-source.json").exists() else None
+    backbone = metadata.get("hub") or {}
+    return f"""---
+license: other
+---
+# {repo_id}
+
+Python {args.version} LoRA for the frozen universal PyLingual {metadata['task']} backbone
+(shared-backbone + per-version LoRA study). The backbone and tokenizer are never modified;
+`last-checkpoint/` holds the latest resumable adapter checkpoint while training runs and
+`adapters/{args.version}/` plus `family.json` hold the final adapter.
+
+- Backbone: {f"[`{backbone['repo_id']}`](https://huggingface.co/{backbone['repo_id']}) at revision `{backbone['revision']}`" if backbone else "local"}, backbone_id `{metadata['backbone_id']}`
+- Data: {f"[`{hub['repo_id']}`](https://huggingface.co/datasets/{hub['repo_id']}) `{hub['path']}` at revision `{hub['revision']}`" if hub else "local"}
+- Rank {args.rank}, alpha {2*args.rank}, dropout 0.05 on {metadata['targets']}; opcode bindings `{json.dumps(provenance['bindings'])}`
+- {args.epochs} epochs, batch {args.batch_size} x {args.accumulation} accumulation, learning rate {args.learning_rate}, {args.precision.upper()}, seed {args.seed}
+- Code: https://github.com/quinntyx/pylingual branch `feat-shared-backbone-lora`, commit `{hub_checkpoints.git_commit()}`
+"""
 
 
 def train_opcode_adapter(args, metadata):
@@ -187,6 +209,14 @@ def train_opcode_adapter(args, metadata):
         provenance["encoded_manifest"] = json.loads((args.encoded_data/"manifest.json").read_text())
     provenance.update(optimizer=training_args.optim.value,weight_decay=training_args.weight_decay,
                       max_grad_norm=training_args.max_grad_norm,lr_scheduler=training_args.lr_scheduler_type.value)
+    hub_repo = getattr(args, "hub_repo", None)
+    if hub_repo and primary:
+        hub_checkpoints.ensure_repo(hub_repo, adapter_card(hub_repo, args, provenance, metadata))
+        if args.resume is None:
+            # A fresh host continues from the Hub's last checkpoint instead of restarting.
+            args.resume = hub_checkpoints.restore(hub_repo, args.output.parent/(args.output.name+"-hub-resume"))
+    if world_size > 1:
+        torch.distributed.barrier()
     collator = DataCollatorForSeq2Seq(tokenizer,model=bank.model,label_pad_token_id=-100) if task == "statement" else DataCollatorForTokenClassification(tokenizer,label_pad_token_id=-100)
     from dev_scripts.train_universal_models import Telemetry
     audit = Telemetry(args.output)
@@ -196,7 +226,10 @@ def train_opcode_adapter(args, metadata):
         provenance.update(world_size=training_args.world_size,
             global_batch_size=training_args.per_device_train_batch_size*args.accumulation*training_args.world_size,
             loss_normalization="global-supervised-token-mean-v1")
-    trainer = AdapterTrainer(model=bank.model,args=training_args,train_dataset=train_data,eval_dataset=valid_data,data_collator=collator,callbacks=[audit],
+    callbacks = [audit]
+    if hub_repo:
+        callbacks.append(hub_checkpoints.HubCheckpointPush(hub_repo, args.output))
+    trainer = AdapterTrainer(model=bank.model,args=training_args,train_dataset=train_data,eval_dataset=valid_data,data_collator=collator,callbacks=callbacks,
         compute_loss_func=token_normalized_loss if world_size > 1 else None)
     audit.trainer = trainer
     result = trainer.train(resume_from_checkpoint=str(args.resume) if args.resume else None)
@@ -220,6 +253,12 @@ def train_opcode_adapter(args, metadata):
     updated["adapter_updates"] = {**metadata.get("adapter_updates",{}),args.version:{**provenance,"source_family":str(args.family.resolve()),"files":len({row["file"] for row in train_rows}),"encoded_rows":len(train_data),"parameters":sum(p.numel() for p in parameters),"frozen_backbone_sha256":before,"optimizer_updates":audit.updates,"training":result.metrics,"validation":validation}}
     updated["complete"] = True
     temporary=args.output/"family.json.tmp";temporary.write_text(json.dumps(updated,indent=2)+"\n");temporary.replace(args.output/"family.json")
+    if hub_repo:
+        staging = args.output/"hub-final"
+        shutil.copytree(args.output/relative, staging/relative)
+        shutil.copy(args.output/"family.json", staging/"family.json")
+        revision = hub_checkpoints.push_final(hub_repo, staging, args.output, f"Final {args.version} adapter")
+        (args.output/"hub.json").write_text(json.dumps({"repo_id": hub_repo, "revision": revision}, indent=2)+"\n")
     print(json.dumps({"complete":True,"output":str(args.output),"version":args.version,"bindings":bindings,"parameters":sum(p.numel() for p in parameters)}),flush=True)
     if world_size > 1:
         torch.distributed.barrier()

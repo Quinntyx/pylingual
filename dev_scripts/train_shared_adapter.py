@@ -40,6 +40,7 @@ def main():
     parser.add_argument("--accumulation", type=int, default=2)
     parser.add_argument("--rank", type=int, default=8)
     parser.add_argument("--seed", type=int, default=20261016)
+    parser.add_argument("--hub-repo", help="Public model repo that mirrors resumable adapter checkpoints and receives the final adapter")
     args = parser.parse_args()
     version = str(PythonVersion(args.version))
     args.version = version

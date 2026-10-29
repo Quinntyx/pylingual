@@ -19,6 +19,7 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers import set_seed
 from dev_scripts.resume_layout import checkpoint_world_size, validate_resume_layout
 from dev_scripts.loss_normalization import token_normalized_loss
+from dev_scripts import hub_checkpoints
 from pylingual.opcodes import OpcodeRegistry
 
 LABELS={"B":0,"I":1,"E":2}
@@ -91,6 +92,29 @@ class Telemetry(TrainerCallback):
              "recent_metrics":state.log_history[-3:]})
     def on_train_end(self,*args,**kwargs): self.handle.remove()
 
+def card(args,provenance,training_args):
+    manifest=provenance["data_manifest"]
+    hub=json.loads((args.data/"hub-source.json").read_text()) if (args.data/"hub-source.json").exists() else None
+    batch=training_args.per_device_train_batch_size*training_args.gradient_accumulation_steps*training_args.world_size
+    return f"""---
+license: other
+---
+# {args.hub_repo}
+
+Universal (all-version) PyLingual {args.task} backbone for the shared-backbone + per-version LoRA
+study, trained on Python 3.6-3.14 with 3.15 held out. `last-checkpoint/` holds the latest
+resumable Trainer checkpoint while training runs; the repo root holds the final model.
+
+- Data: {f"[`{hub['repo_id']}`](https://huggingface.co/datasets/{hub['repo_id']}) `{hub['path']}` at revision `{hub['revision']}`" if hub else "local"}
+  ({manifest['files']} source files, {manifest['encoded_rows']} encoded rows, tokenizer.json sha256 `{manifest['tokenizer_json_sha256']}`)
+- Initialization: `{provenance['initialization']}`
+- 2 epochs, global batch {batch} ({training_args.per_device_train_batch_size} x {training_args.gradient_accumulation_steps} accumulation x {training_args.world_size} GPU),
+  learning rate {training_args.learning_rate}, weight decay {training_args.weight_decay}, {"FP16" if training_args.fp16 else "FP32"}, seed {training_args.seed}
+- Code: https://github.com/quinntyx/pylingual branch `feat-shared-backbone-lora`, commit `{hub_checkpoints.git_commit()}`
+
+`run/provenance.json` records every training argument and the full data manifest.
+"""
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task",choices=["statement","mlm","segmentation"],required=True)
@@ -102,6 +126,8 @@ def main():
     parser.add_argument("--accumulation",type=int,default=1);parser.add_argument("--workers",type=int,default=2)
     parser.add_argument("--seed",type=int,default=20261020)
     parser.add_argument("--ordinary-version",choices=["3.14","3.15"])
+    parser.add_argument("--hub-repo",help="Public model repo that mirrors resumable checkpoints and receives the final model")
+    parser.add_argument("--save-steps",type=int,help="Checkpoint (and Hub push) interval; defaults to 1000 for MLM, 10000 otherwise")
     args=parser.parse_args()
     if args.steps and not args.smoke_only: raise ValueError("Step caps require --smoke-only")
     torch.set_num_threads(4);set_seed(args.seed)
@@ -160,7 +186,7 @@ def main():
     training_args=argument_class(output_dir=str(args.output/"training"),num_train_epochs=2,max_steps=args.steps or -1,
       per_device_train_batch_size=args.batch_size or (24 if statement else 28),gradient_accumulation_steps=args.accumulation,
       learning_rate=5e-5 if mlm else 2e-5,weight_decay=0 if mlm else .01,fp16=not mlm,bf16=False,
-      logging_steps=1000,save_steps=1000 if mlm else 10000,save_total_limit=5 if mlm else 2,
+      logging_steps=1000,save_steps=args.save_steps or (1000 if mlm else 10000),save_total_limit=5 if mlm else 2,
       report_to=[],seed=args.seed,dataloader_num_workers=args.workers,remove_unused_columns=False,
       ddp_find_unused_parameters=False,disable_tqdm=True,logging_nan_inf_filter=False)
     provenance={"scope":scope,"ordinary_version":args.ordinary_version,"task":args.task,"initialization":str(args.initialization),"initial_weights_sha256":initial_hash,
@@ -168,6 +194,9 @@ def main():
       "original_vocab":original_vocab,"vocab":len(tokenizer),"torch":torch.__version__,"transformers":transformers.__version__,
       "python":platform.python_version(),"hostname":platform.node(),"smoke_only":args.smoke_only,
       "script_sha256":hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),"world_size":training_args.world_size,"loss_normalization":"global-supervised-token-mean-v1","loss_normalization_sha256":hashlib.sha256(Path(token_normalized_loss.__code__.co_filename).read_bytes()).hexdigest()}
+    if args.hub_repo and args.resume and training_args.process_index==0:
+        hub_checkpoints.restore(args.hub_repo,args.output)
+    if torch.distributed.is_initialized(): torch.distributed.barrier()
     checkpoint=get_last_checkpoint(str(args.output/"training")) if args.resume and (args.output/"training").exists() else None
     training_args._pylingual_allow_repartition = args.resume_original_world_size is not None
     if args.resume_original_world_size is not None and (not args.resume or checkpoint is None):
@@ -187,9 +216,12 @@ def main():
         write(args.output/"latest-execution.json",execution)
         if args.resume:
             with (args.output/"resume-history.jsonl").open("a") as stream:stream.write(json.dumps(execution,default=str)+"\n")
+        if args.hub_repo:
+            hub_checkpoints.ensure_repo(args.hub_repo,card(args,provenance,training_args))
     if torch.distributed.is_initialized(): torch.distributed.barrier()
     audit=Telemetry(args.output);torch.cuda.reset_peak_memory_stats()
-    trainer=trainer_cls(model=model,args=training_args,train_dataset=dataset,data_collator=collator,compute_loss_func=token_normalized_loss,callbacks=[audit])
+    trainer=trainer_cls(model=model,args=training_args,train_dataset=dataset,data_collator=collator,compute_loss_func=token_normalized_loss,
+      callbacks=[audit]+([hub_checkpoints.HubCheckpointPush(args.hub_repo,args.output)] if args.hub_repo else []))
     audit.trainer=trainer
     checkpoint=get_last_checkpoint(str(args.output/"training")) if args.resume and (args.output/"training").exists() else None
     result=trainer.train(resume_from_checkpoint=checkpoint)
@@ -209,6 +241,9 @@ def main():
           "peak_cuda_GiB":torch.cuda.max_memory_allocated()/2**30,"final_weights_sha256":fingerprint(model)}
         if not args.smoke_only and trainer.state.epoch<1.999: raise RuntimeError("Full two epochs did not finish")
         write(args.output/"result.json",report);write(args.output/"progress.json",report)
+        if args.hub_repo:
+            report["hub"]={"repo_id":args.hub_repo,"revision":hub_checkpoints.push_final(args.hub_repo,args.output/"checkpoint",args.output,"Final model after "+str(result.global_step)+" steps")}
+            write(args.output/"result.json",report)
         print(json.dumps(report),flush=True)
     if torch.distributed.is_initialized(): torch.distributed.destroy_process_group()
 if __name__=="__main__": main()
