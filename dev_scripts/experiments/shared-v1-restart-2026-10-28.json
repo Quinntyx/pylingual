@@ -1,0 +1,27 @@
+{
+  "description": "Shared-backbone + per-version LoRA restart on triplesec1/2 after the loss of syssec-gpu4. Read by run_triplesec_lane.py; every input is pinned to a Hub revision.",
+  "approved": false,
+  "tokenizer": {"repo_id": "syssec-utd/pylingual-shared-tokenizer-v1", "revision": "d23233a4bb237dcc3b1660e46a42f9189eaf0f6c"},
+  "backbone_corpus": {"repo_id": "syssec-utd/pylingual-shared-tokenizer-corpus-v1", "revision": "2dd36151733c372cc7409a77af7066b172ad6e76"},
+  "adapter_corpus": {"repo_id": "syssec-utd/pylingual-shared-adapter-corpus-v1", "revision": null},
+  "encoded": {"repo_id": "syssec-utd/pylingual-shared-encoded-v1", "revision": null},
+  "initialization": {"repo_id": "Salesforce/codet5-base", "revision": "02cd2d31bb7c6d0e4d91156167b2de044989c733"},
+  "lanes": {"triplesec1-gpu": ["statement", "lora-3.14"], "triplesec2-gpu": ["segmentation", "lora-3.15"]},
+  "stages": {
+    "statement": {"hub_repo": "syssec-utd/pylingual-shared-statement-v1", "epochs": 2, "batch_size": 24, "accumulation": 3,
+                  "learning_rate": 2e-5, "weight_decay": 0.01, "precision": "fp16", "seed": 20261020, "save_steps": 10000},
+    "mlm": {"hub_repo": "syssec-utd/pylingual-shared-mlm-v1", "epochs": 2, "batch_size": 28, "accumulation": 1,
+            "learning_rate": 5e-5, "weight_decay": 0, "precision": "fp32", "seed": 20261020, "save_steps": 8000},
+    "segmentation": {"hub_repo": "syssec-utd/pylingual-shared-segmentation-v1", "epochs": 2, "batch_size": 28, "accumulation": 1,
+                     "learning_rate": 2e-5, "weight_decay": 0.01, "precision": "fp16", "seed": 20261020, "save_steps": 25000},
+    "lora-3.14": {"hub_repo": "syssec-utd/pylingual-shared-lora-statement-3.14-v1", "epochs": 2, "rank": 64, "batch_size": 36,
+                  "accumulation": 2, "learning_rate": 2e-5, "precision": "fp16", "seed": 20261020, "save_steps": 10000},
+    "lora-3.15": {"hub_repo": "syssec-utd/pylingual-shared-lora-statement-3.15-v1", "epochs": 2, "rank": 64, "batch_size": 36,
+                  "accumulation": 2, "learning_rate": 2e-5, "precision": "fp16", "seed": 20261020, "save_steps": 10000}
+  },
+  "notes": {
+    "fixed_in_trainer": "Universal learning rate, weight decay, precision and epochs are fixed in train_universal_models.py; the stage entries above record them.",
+    "batch": "Global batches match October (statement 72, MLM 28, segmentation 28, LoRA 72). Per-device sizes are the largest divisors that fit a 24 GB 4090: statement 36 overflowed at 22 GiB, 24x3 peaked at 16.2 GiB; LoRA 36x2 peaked at 17.1 GiB; MLM 28 at 12.0 GiB; segmentation 28 at 5.9 GiB.",
+    "save_steps": "About one checkpoint (and Hub push) per hour at the probed triplesec1 throughput."
+  }
+}

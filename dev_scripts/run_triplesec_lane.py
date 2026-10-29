@@ -78,7 +78,7 @@ def run(root, name, argv, attempts=3):
     raise RuntimeError(f"{name} failed {attempts} times; see {log}")
 
 
-def universal(root, plan, task, data, tokenizer_dir, initialization=None):
+def universal(root, plan, task, data, tokenizer_dir, initialization=None, smoke=0):
     stage = plan["stages"][task]
     output = root/"universal"/task
     if (output/"result.json").exists() and json.loads((output/"result.json").read_text()).get("hub"):
@@ -92,6 +92,8 @@ def universal(root, plan, task, data, tokenizer_dir, initialization=None):
                    "--hub-repo", stage["hub_repo"]]
         if initialization is not None:
             command += ["--initialization", str(initialization)]
+        if smoke:
+            command += ["--smoke-only", "--steps", str(smoke)]
         if resumable(output, stage["hub_repo"]):
             command.append("--resume")
         return command
@@ -113,7 +115,7 @@ def family(root, plan):
     return destination
 
 
-def lora(root, plan, version):
+def lora(root, plan, version, smoke=0):
     stage = plan["stages"]["lora-"+version]
     base = family(root, plan)
     pools = fetch(root, plan["adapter_corpus"], [f"{version}/*/accepted.jsonl", f"{version}/*/manifest.json"])/version
@@ -133,7 +135,7 @@ def lora(root, plan, version):
                 "--batch-size", str(stage["batch_size"]), "--accumulation", str(stage["accumulation"]),
                 "--learning-rate", str(stage["learning_rate"]), "--precision", stage["precision"],
                 "--checkpoint-steps", str(stage["save_steps"]), "--seed", str(stage["seed"]),
-                "--hub-repo", stage["hub_repo"]]
+                "--hub-repo", stage["hub_repo"]]+(["--steps", str(smoke)] if smoke else [])
     run(root, "lora-"+version, argv)
 
 
@@ -142,24 +144,27 @@ def main():
     parser.add_argument("--plan", type=Path, required=True)
     parser.add_argument("--root", type=Path, default=Path.home()/"pylingual-runs")
     parser.add_argument("--lane", choices=("statement", "segmentation", "lora-3.14", "lora-3.15"), required=True)
+    parser.add_argument("--smoke-steps", type=int, default=0, help="Pipeline check on smoke data with a throwaway plan only")
     args = parser.parse_args()
     plan = json.loads(args.plan.read_text())
-    if not plan.get("approved"):
+    if args.smoke_steps and not plan.get("smoke_only"):
+        raise ValueError("--smoke-steps requires a plan marked smoke_only (throwaway repos)")
+    if not plan.get("approved") and not args.smoke_steps:
         raise ValueError("Plan is not marked approved; get the user's yes before multi-hour training")
     args.root.mkdir(parents=True, exist_ok=True)
     if args.lane == "statement":
         initialization = fetch(args.root, plan["initialization"], None, repo_type="model")
         universal(args.root, plan, "statement", encoded(args.root, plan, "universal/statement"),
-                  tokenizer(args.root, plan, "statement"), initialization)
+                  tokenizer(args.root, plan, "statement"), initialization, args.smoke_steps)
     elif args.lane == "segmentation":
         data, tokenizer_dir = encoded(args.root, plan, "universal/segmentation"), tokenizer(args.root, plan, "segmentation")
-        mlm = universal(args.root, plan, "mlm", data, tokenizer_dir)
+        mlm = universal(args.root, plan, "mlm", data, tokenizer_dir, smoke=args.smoke_steps)
         # Segmentation always starts from the final MLM weights, even on a host that never ran MLM.
         initialization = mlm/"checkpoint" if (mlm/"checkpoint/config.json").exists() else \
             final_model(args.root, plan["stages"]["mlm"]["hub_repo"], mlm/"checkpoint")
-        universal(args.root, plan, "segmentation", data, tokenizer_dir, initialization)
+        universal(args.root, plan, "segmentation", data, tokenizer_dir, initialization, args.smoke_steps)
     else:
-        lora(args.root, plan, args.lane.split("-")[1])
+        lora(args.root, plan, args.lane.split("-")[1], args.smoke_steps)
     print(json.dumps({"lane": args.lane, "complete": True}), flush=True)
 
 
