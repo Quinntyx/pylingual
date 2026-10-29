@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING
 
 from xdis.magics import magicint2version
 
-from pylingual.control_flow_reconstruction.model_view import Statement, cflow_request
+from pylingual.control_flow_reconstruction.model_view import CflowRequest, cflow_request
 from pylingual.control_flow_reconstruction.source import SourceContext, SourceLine
 from pylingual.control_flow_reconstruction.structure import bc_to_cft
 from pylingual.control_flow_reconstruction.cft import ControlFlowTemplate, MetaTemplate
@@ -59,7 +59,7 @@ from pylingual.utils.tracked_list import CFLOW_STEP, CORRECTION_STEP, SEGMENTATI
 if TYPE_CHECKING:
     import transformers
     from pylingual.editable_bytecode.Instruction import Inst
-    from pylingual.models import SkeletonPredictor
+    from pylingual.models import ControlFlowPredictor
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +125,7 @@ class Decompiler:
     :param cflow_model: Control flow model, or None to use the control flow templates only
     """
 
-    def __init__(self, pyc: PYCFile, segmenter: transformers.Pipeline, translator: CacheTranslator, version: PythonVersion, top_k=10, trust_lnotab=False, timeout=None, cflow_model: SkeletonPredictor | None = None):
+    def __init__(self, pyc: PYCFile, segmenter: transformers.Pipeline, translator: CacheTranslator, version: PythonVersion, top_k=10, trust_lnotab=False, timeout=None, cflow_model: ControlFlowPredictor | None = None):
         self.pyc = pyc
         self.name = pyc.pyc_path.name if pyc.pyc_path is not None else repr(pyc)
         self.segmenter = segmenter
@@ -418,15 +418,15 @@ class Decompiler:
                 translation_requests[-1] += bytecode_separator + model_view
         return translation_requests
 
-    # candidate skeletons for each (statements, tokens) request, None where the templates should be used
-    def predict_skeletons(self, requests: list[tuple[list[Statement], list[str]] | None], num_beams=1) -> list[list[list[str]] | None]:
-        return self.cflow_model([(r[1], len(r[0])) if r else None for r in requests], num_beams=num_beams, check_timeout=self.check_timeout)
+    # candidate skeletons for each request, None where the templates should be used
+    def predict_skeletons(self, requests: list[CflowRequest | None], num_beams=1) -> list[list[list[str]] | None]:
+        return self.cflow_model(requests, num_beams=num_beams, check_timeout=self.check_timeout)
 
     # the model's best skeleton for the ith code object, or the templates
     def make_cft(self, i: int) -> ControlFlowTemplate:
         bc = self.ordered_bytecodes[i]
         if self.cflow_results[i]:
-            return SkeletonTemplate(bc, self.cflow_requests[i][0], self.cflow_results[i][0])
+            return SkeletonTemplate(bc, self.cflow_requests[i].stmts, self.cflow_results[i][0])
         return bc_to_cft(bc, self.source_lines)
 
     def update_source_lines(self):

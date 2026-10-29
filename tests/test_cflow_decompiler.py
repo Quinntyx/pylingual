@@ -6,7 +6,7 @@ from pylingual.control_flow_reconstruction.source import SourceContext
 from pylingual.control_flow_reconstruction.structure import bc_to_cft
 from pylingual.control_flow_reconstruction.templates.Skeleton import SkeletonTemplate
 from pylingual.decompiler import Decompiler, has_comp_error
-from pylingual.models import SkeletonPredictor
+from pylingual.models import ControlFlowPredictor
 from pylingual.utils.version import PythonVersion
 
 from test_cflow_model_view import compile_marked
@@ -21,8 +21,8 @@ SOURCE_TRY = "def g(a):\n    print(a)\n\n\ndef f(a):\n    try:\n        print(1)
 EXCEPT_FIRST = "<s0> { <s1> } except { <s3> } <s2> { }"
 
 
-class StubPredictor(SkeletonPredictor):
-    """SkeletonPredictor with canned candidates, best first, instead of a model."""
+class StubPredictor(ControlFlowPredictor):
+    """ControlFlowPredictor with canned candidates, best first, instead of a model."""
 
     def __init__(self, candidates: list[str], error: Exception | None = None):
         self.candidates = [x.split() for x in candidates]
@@ -37,7 +37,7 @@ class StubPredictor(SkeletonPredictor):
         return [self.candidates[:num_beams] for _ in batch]
 
 
-def decompile_with(predictor: SkeletonPredictor | None, tmp_path, source=SOURCE, mistranslated: dict[int, str] | None = None) -> Decompiler:
+def decompile_with(predictor: ControlFlowPredictor | None, tmp_path, source=SOURCE, mistranslated: dict[int, str] | None = None) -> Decompiler:
     """Runs the control flow phases and correction on `source`, with the source as the translation but for `mistranslated` lines."""
     src = tmp_path / "f.py"
     src.write_text(source)
@@ -62,7 +62,7 @@ def cft_of_f(d: Decompiler):
 
 
 def test_beam_fixes_greedy_skeleton(tmp_path):
-    predictor = StubPredictor([FLAT, NESTED, RIGHT])
+    predictor = StubPredictor([NESTED, FLAT, RIGHT])
     d = decompile_with(predictor, tmp_path)
     assert predictor.beams == [1, 4]  # beam search only for the failing code object
     assert isinstance(cft_of_f(d), SkeletonTemplate) and cft_of_f(d).tokens == RIGHT.split()
@@ -70,9 +70,19 @@ def test_beam_fixes_greedy_skeleton(tmp_path):
 
 
 def test_templates_after_failing_beams(tmp_path):
-    d = decompile_with(StubPredictor([FLAT, NESTED]), tmp_path)
+    predictor = StubPredictor([NESTED, FLAT])
+    d = decompile_with(predictor, tmp_path)
+    assert predictor.beams == [1, 4]
     assert not isinstance(cft_of_f(d), SkeletonTemplate)
     assert d.equivalence_results and all(r.success for r in d.equivalence_results)
+
+
+def test_skeletons_outside_the_grammar_are_dropped(tmp_path):
+    # FLAT leaves the if header without a block, EXCEPT_FIRST puts `except ValueError:` after a bare except
+    d = decompile_with(StubPredictor([FLAT]), tmp_path)
+    assert d.cflow_results[[bc.codeobj.co_name for bc in d.ordered_bytecodes].index("f")] is None
+    d = decompile_with(StubPredictor([EXCEPT_FIRST]), tmp_path, SOURCE_TRY)
+    assert d.cflow_results[[bc.codeobj.co_name for bc in d.ordered_bytecodes].index("f")] is None
 
 
 def test_templates_after_purging_another_code_object(tmp_path):

@@ -24,7 +24,7 @@ from pathlib import Path
 
 import tqdm
 
-from pylingual.control_flow_reconstruction.model_view import encode_code_object
+from pylingual.control_flow_reconstruction.model_view import cflow_request
 from pylingual.control_flow_reconstruction.skeleton import BLOCK_KEYWORDS, ref
 from pylingual.control_flow_reconstruction.source import SourceContext
 from pylingual.control_flow_reconstruction.structure import bc_to_cft
@@ -208,22 +208,20 @@ def code_object_body(tree: ast.Module, bc: EditableBytecode) -> list[ast.stmt] |
 
 def make_examples(pyc: PYCFile, src: str) -> list[dict]:
     """
-    Examples for the code objects of `pyc`. An example is a dict with the model input, the gold skeleton as `target`,
-    `n_stmts`, and the bytecode and statements (`_bc`, `_stmts`) for rendering.
+    Examples for the code objects of `pyc`. An example is a dict with the request fields (CflowRequest.row), the gold
+    skeleton as `target`, and the bytecode and statements (`_bc`, `_stmts`) for rendering. A gold skeleton must fit the
+    block grammar, so a code object whose source the grammar does not describe is left out.
     """
     lines = src.split("\n")
     tree = ast.parse(src)
     assign_lines(pyc, lines)
     examples = []
     for bc in pyc.iter_bytecodes():
-        if bc.is_comprehension:
-            continue
+        request = cflow_request(bc, lines)
         body = code_object_body(tree, bc)
-        if body is None:
+        if request is None or body is None:
             continue
-        stmts, inp = encode_code_object(bc, lines)
-        if not stmts:
-            continue
+        stmts = request.stmts
         line2idx = {s.insts[0].starts_line: s.index for s in stmts if s.insts[0].starts_line is not None}
         try:
             builder = SkeletonBuilder(lines, line2idx)
@@ -231,9 +229,11 @@ def make_examples(pyc: PYCFile, src: str) -> list[dict]:
             missing = set(line2idx.values()) - builder.used
             if missing:
                 raise Invalid(f"unused statements {sorted(missing)}")
+            if error := request.grammar().check(target):
+                raise Invalid(f"gold skeleton outside the block grammar: {error}")
         except Invalid:
             continue
-        examples.append({"name": bc.name, "n_stmts": len(stmts), "input": " ".join(inp), "target": " ".join(target), "_bc": bc, "_stmts": stmts})
+        examples.append({"name": bc.name, **request.row(), "target": " ".join(target), "_bc": bc, "_stmts": stmts})
     return examples
 
 
@@ -250,33 +250,43 @@ def render_with_skeletons(pyc: PYCFile, lines: list[str], examples: list[dict]) 
     return str(SourceContext(pyc, lines, cfts))
 
 
-def bytecode2cflow(py_path: Path, pyc_path: Path) -> list[dict]:
-    """Rows for the code objects of one file whose gold skeleton recompiles to equivalent bytecode."""
+def load_pair(py_path: Path, pyc_path: Path, tmp: Path) -> tuple[str, PYCFile, Path]:
+    """Source, pyc and pyc path of a dataset file as the decompiler sees it."""
     src = py_path.read_text()
     pyc = PYCFile(pyc_path)
+    if pyc.version <= (3, 7):
+        # drop the dummy decorators create_code_dataset added; the decompiler never sees them
+        src = "\n".join(line for line in src.split("\n") if line.strip() != f"@{DUMMY_DECORATOR}")
+        py_path = tmp / "source.py"
+        py_path.write_text(src)
+        pyc_path = py_path.with_suffix(".pyc")
+        compile_version(py_path, pyc_path, pyc.version)
+        pyc = PYCFile(pyc_path)
+    return src, pyc, pyc_path
+
+
+def equivalent_names(pyc: PYCFile, pyc_path: Path, src: str, examples: list[dict], out: Path) -> set[str] | None:
+    """
+    Names of the code objects that recompile to equivalent bytecode with the skeletons of `examples` (written to
+    `out`), or None if the source does not compile.
+    """
+    out.write_text(render_with_skeletons(pyc, src.split("\n"), examples))
+    try:
+        compile_version(out, out.with_suffix(".pyc"), pyc.version)
+    except CompileError:
+        return None
+    results = compare_pyc(pyc_path, out.with_suffix(".pyc"))
+    # code objects can share a name (a property and its setter), so a name passes only if all of them do
+    return {r.name_a for r in results if r.success} - {r.name_a for r in results if not r.success}
+
+
+def bytecode2cflow(py_path: Path, pyc_path: Path) -> list[dict]:
+    """Rows for the code objects of one file whose gold skeleton recompiles to equivalent bytecode."""
     with tempfile.TemporaryDirectory() as tmp:
-        tmp = Path(tmp)
-        if pyc.version <= (3, 7):
-            # drop the dummy decorators create_code_dataset added; the decompiler never sees them
-            src = "\n".join(line for line in src.split("\n") if line.strip() != f"@{DUMMY_DECORATOR}")
-            py_path_used = tmp / "source.py"
-            py_path_used.write_text(src)
-            pyc_path = py_path_used.with_suffix(".pyc")
-            compile_version(py_path_used, pyc_path, pyc.version)
-            pyc = PYCFile(pyc_path)
+        src, pyc, pyc_path = load_pair(py_path, pyc_path, Path(tmp))
         examples = make_examples(pyc, src)
-        if not examples:
-            return []
-        gold = tmp / "gold.py"
-        gold.write_text(render_with_skeletons(pyc, src.split("\n"), examples))
-        try:
-            compile_version(gold, gold.with_suffix(".pyc"), pyc.version)
-        except CompileError:
-            return []
-        results = compare_pyc(pyc_path, gold.with_suffix(".pyc"))
-        # code objects can share a name (a property and its setter), so a name passes only if all of them do
-        ok = {r.name_a for r in results if r.success} - {r.name_a for r in results if not r.success}
-    return [{"input": e["input"], "target": e["target"], "n_stmts": e["n_stmts"], "file": str(py_path)} for e in examples if e["name"] in ok]
+        ok = equivalent_names(pyc, pyc_path, src, examples, Path(tmp) / "gold.py") if examples else None
+    return [{k: v for k, v in e.items() if k != "name" and not k.startswith("_")} | {"file": str(py_path)} for e in examples if ok and e["name"] in ok]
 
 
 def _timeout(*_):

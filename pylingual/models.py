@@ -11,6 +11,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from pylingual.control_flow_reconstruction.block_grammar import consistent
 from pylingual.control_flow_reconstruction.model_view import is_straight_line
 from pylingual.control_flow_reconstruction.skeleton import GrammarLogitsProcessor, SkeletonGrammar, from_model_order, ref
 from pylingual.masking.model_disasm import (
@@ -25,6 +26,8 @@ from pylingual.utils.lazy import lazy_import
 
 if TYPE_CHECKING:
     import torch
+
+    from pylingual.control_flow_reconstruction.model_view import CflowRequest
     import transformers
     import huggingface_hub
 else:
@@ -131,30 +134,93 @@ class CacheTranslator:
             self.cache.popitem(last=False)
         return results
 
-# control flow model with grammar constrained decoding
-class SkeletonPredictor:
+# control flow models
+class ControlFlowPredictor:
     """
-    Predicts control flow skeletons from control flow model inputs (see control_flow_reconstruction/model_view.py)
+    Predicts control flow skeletons for control flow model requests (see control_flow_reconstruction/model_view.py).
+    Every skeleton it returns fits its request's block grammar (control_flow_reconstruction/block_grammar.py), so it
+    renders to source that compiles. A model implements `_generate` and `from_pretrained`, and is chosen by the ARCH of
+    a CONTROL_FLOW_MODEL entry (see PREDICTORS).
+
+    :param max_stmts: Requests with more statements are not predicted
+    :param max_input_tokens: Requests with longer inputs are not predicted
+    """
+
+    BATCH_SIZE = 16
+
+    def __init__(self, max_stmts: int, max_input_tokens: int):
+        self.max_stmts = max_stmts
+        self.max_input_tokens = max_input_tokens
+
+    @classmethod
+    def from_pretrained(cls, repo: str, revision: str | None = None, token=False, device="cpu") -> ControlFlowPredictor:
+        raise NotImplementedError
+
+    def _generate(self, batch: list[CflowRequest], num_beams: int) -> list[list[list[str]]]:
+        """Up to `num_beams` skeleton candidates (source order, best first) for each request of a batch"""
+        raise NotImplementedError
+
+    def __call__(self, requests: list[CflowRequest | None], num_beams: int = 1, check_timeout: callable = None) -> list[list[list[str]] | None]:
+        """
+        Candidate skeletons (source order, best first) for each request, all accepted by its block grammar.
+        None for no request, for inputs over the model's limits, and when the model fails or gives no valid skeleton.
+        """
+        results = [None] * len(requests)
+        todo = []
+        for i, request in enumerate(requests):
+            if request is None or not consistent(request.shapes):
+                continue
+            # straight-line code needs no model, however long it is
+            in_order = [ref(k) for k in range(request.n)]
+            if is_straight_line(request.tokens) and request.grammar().accepts(in_order):
+                results[i] = [in_order]
+            elif request.n <= self.max_stmts and len(request.tokens) < self.max_input_tokens:
+                todo.append(i)
+        # sorted by length so batches need less padding
+        todo = TrackedList(CFLOW_MODEL_STEP, sorted(todo, key=lambda i: len(requests[i].tokens)), check_timeout=check_timeout)
+        for start in range(0, len(todo), self.BATCH_SIZE):
+            batch = todo[start : start + self.BATCH_SIZE]
+            try:
+                for i, skeletons in zip(batch, self._generate([requests[i] for i in batch], num_beams)):
+                    grammar = requests[i].grammar()
+                    results[i] = [s for s in skeletons if grammar.accepts(s)] or None
+                continue
+            except TimeoutError:
+                raise
+            except Exception as e:
+                error = repr(e)
+            # handled outside the except block so tensors can be freed; these code objects use the templates
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            logger.info(f"Control flow model failed on {len(batch)} code objects, using templates ({error})")
+        return results
+
+
+class SkeletonPredictor(ControlFlowPredictor):
+    """
+    T5 control flow model with grammar constrained decoding (see control_flow_reconstruction/skeleton.py)
 
     :param model: The loaded control flow model, its config holds the limits and keywords it was trained with
     :param tokenizer: The control flow model's tokenizer
     """
 
-    BATCH_SIZE = 16
-
     def __init__(self, model: transformers.T5ForConditionalGeneration, tokenizer: transformers.PreTrainedTokenizerFast, device="cpu"):
+        super().__init__(model.config.max_stmts, model.config.max_input_tokens)
         self.model = model
         self.tokenizer = tokenizer
         self.device = device
-        self.max_stmts = model.config.max_stmts
-        self.max_input_tokens = model.config.max_input_tokens
         self.keywords = model.config.skeleton_keywords
         self.model.to(self.device)
 
-    def _generate(self, batch: list[tuple[list[str], int]], num_beams: int) -> list[list[list[str]]]:
-        """Skeleton candidates of a single batch of requests"""
-        encoded = self.tokenizer([" ".join(tokens) for tokens, _ in batch], return_tensors="pt", padding=True).to(self.device)
-        n_stmts = [n for _, n in batch]
+    @classmethod
+    def from_pretrained(cls, repo: str, revision: str | None = None, token=False, device="cpu") -> SkeletonPredictor:
+        model = _cached_first(transformers.T5ForConditionalGeneration.from_pretrained, repo, revision=revision, token=token)
+        tokenizer = _cached_first(transformers.PreTrainedTokenizerFast.from_pretrained, repo, revision=revision, token=token)
+        return cls(model, tokenizer, device=device)
+
+    def _generate(self, batch: list[CflowRequest], num_beams: int) -> list[list[list[str]]]:
+        encoded = self.tokenizer([" ".join(r.tokens) for r in batch], return_tensors="pt", padding=True).to(self.device)
+        n_stmts = [r.n for r in batch]
         grammar = SkeletonGrammar(self.tokenizer, self.max_stmts, self.keywords)
         with torch.no_grad():
             output = self.model.generate(
@@ -169,39 +235,9 @@ class SkeletonPredictor:
         decoded = self.tokenizer.batch_decode(output, skip_special_tokens=True)
         return [[from_model_order(x.split()) for x in decoded[j * num_beams : (j + 1) * num_beams]] for j in range(len(batch))]
 
-    def __call__(self, requests: list[tuple[list[str], int] | None], num_beams: int = 1, check_timeout: callable = None) -> list[list[list[str]] | None]:
-        """
-        Candidate skeletons (source order, best first) for each (tokens, statement count) request.
-        None for no request, for inputs over the model's limits, and for batches the model fails on.
-        """
-        results = [None] * len(requests)
-        todo = []
-        for i, request in enumerate(requests):
-            if request is None:
-                continue
-            tokens, n = request
-            # straight-line code needs no model, however long it is
-            if is_straight_line(tokens):
-                results[i] = [[ref(k) for k in range(n)]]
-            elif n <= self.max_stmts and len(tokens) < self.max_input_tokens:
-                todo.append(i)
-        # sorted by length so batches need less padding
-        todo = TrackedList(CFLOW_MODEL_STEP, sorted(todo, key=lambda i: len(requests[i][0])), check_timeout=check_timeout)
-        for start in range(0, len(todo), self.BATCH_SIZE):
-            batch = todo[start : start + self.BATCH_SIZE]
-            try:
-                for i, skeletons in zip(batch, self._generate([requests[i] for i in batch], num_beams)):
-                    results[i] = skeletons
-                continue
-            except TimeoutError:
-                raise
-            except Exception as e:
-                error = repr(e)
-            # handled outside the except block so tensors can be freed; these code objects use the templates
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            logger.info(f"Control flow model failed on {len(batch)} code objects, using templates ({error})")
-        return results
+
+# ARCH of a CONTROL_FLOW_MODEL entry -> its predictor
+PREDICTORS: dict[str, type[ControlFlowPredictor]] = {"t5": SkeletonPredictor}
 
 # offline support if models are downloaded
 def _cached_first(fn, *args, **kwargs):
@@ -254,7 +290,7 @@ def load_models(
     redis_port: int = 1679,
     token=False,
     device: torch.device | None = None,
-) -> tuple[transformers.Pipeline, CacheTranslator, SkeletonPredictor | None]:
+) -> tuple[transformers.Pipeline, CacheTranslator, ControlFlowPredictor | None]:
     logger.info(f"Loading models for {version}...")
     with config_file.open() as f:
         config = yaml.safe_load(f)
@@ -328,20 +364,7 @@ def load_models(
     ##################################################
     cflow_model = None
     if cflow_config is not None:
-        control_flow_model = _cached_first(
-            transformers.T5ForConditionalGeneration.from_pretrained,
-            cflow_config["REPO"],
-            revision=cflow_config["REVISION"],
-            token=token,
-        )
-
-        control_flow_tokenizer = _cached_first(
-            transformers.PreTrainedTokenizerFast.from_pretrained,
-            cflow_config["REPO"],
-            revision=cflow_config["REVISION"],
-            token=token,
-        )
-
-        cflow_model = SkeletonPredictor(control_flow_model, control_flow_tokenizer, device=device)
+        predictor = PREDICTORS[cflow_config.get("ARCH", "t5")]
+        cflow_model = predictor.from_pretrained(cflow_config["REPO"], revision=cflow_config.get("REVISION"), token=token, device=device)
 
     return segmenter, translator, cflow_model

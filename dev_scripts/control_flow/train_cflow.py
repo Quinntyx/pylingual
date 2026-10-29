@@ -14,7 +14,7 @@ from tokenizers import Tokenizer, models, pre_tokenizers, processors
 from transformers import DataCollatorForSeq2Seq, PreTrainedTokenizerFast, T5Config, T5ForConditionalGeneration, Trainer, TrainingArguments
 from transformers.trainer_utils import get_last_checkpoint
 
-from pylingual.control_flow_reconstruction.model_view import INPUT_TOKENS
+from pylingual.control_flow_reconstruction.model_view import INPUT_TOKENS, CflowRequest
 from pylingual.control_flow_reconstruction.skeleton import CLOSE, KEYWORD_TEXT, LOOP, OPEN, PLACE, ref, to_model_order
 from pylingual.models import SkeletonPredictor
 
@@ -40,7 +40,7 @@ def load_cflow_dataset(config: ControlFlowConfiguration):
 
 def exact_match(model, tokenizer, test) -> dict:
     """Share of greedy skeletons equal to the gold skeleton, by statement count."""
-    predictions = SkeletonPredictor(model, tokenizer, model.device)([(row["input"].split(), row["n_stmts"]) for row in test])
+    predictions = SkeletonPredictor(model, tokenizer, model.device)([CflowRequest.from_row(row) for row in test])
     buckets = {}
     for prediction, row in zip(predictions, test):
         bucket = buckets.setdefault(max(8, 2 ** math.ceil(math.log2(row["n_stmts"]))), [0, 0])

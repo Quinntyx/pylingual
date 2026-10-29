@@ -28,7 +28,9 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from pylingual.editable_bytecode.control_flow_graph import bytecode_to_control_flow_graph
+from pylingual.utils.version import PythonVersion
 
+from .block_grammar import BlockGrammar, Shape, shape_of
 from .skeleton import ref
 
 if TYPE_CHECKING:
@@ -70,6 +72,33 @@ class Statement:
     index: int
     insts: list[Inst]
     silent: set = field(default_factory=set)  # merged cleanup instructions, whose line is not rendered
+    kind: str = "K_none"  # see statement_kind
+    text: str = ""  # translated line
+
+
+@dataclass
+class CflowRequest:
+    """A code object for the control flow model: the model input, and the statement shapes and version its skeleton must fit (block_grammar.py)."""
+
+    tokens: list[str]
+    shapes: list[Shape]
+    version: PythonVersion
+    stmts: list[Statement] = field(default_factory=list)  # for rendering; empty when read from a dataset row
+
+    @property
+    def n(self) -> int:
+        return len(self.shapes)
+
+    def grammar(self) -> BlockGrammar:
+        return BlockGrammar(self.shapes, self.version)
+
+    def row(self) -> dict:
+        """The request as dataset row fields."""
+        return {"input": " ".join(self.tokens), "n_stmts": self.n, "shapes": " ".join(map(str, self.shapes)), "version": str(self.version)}
+
+    @staticmethod
+    def from_row(row: dict) -> CflowRequest:
+        return CflowRequest(row["input"].split(), [Shape.parse(s) for s in row["shapes"].split()], PythonVersion(row["version"]))
 
 
 def line_kind(text: str) -> str:
@@ -176,7 +205,9 @@ def encode_code_object(bc: EditableBytecode, lines: list[str]) -> tuple[list[Sta
     tokens: list[str] = []
     handler = None  # exception handler in effect; a token is written only when it changes
     for s in stmts:
-        tokens += [STMT_SEP, ref(s.index), statement_kind(s, statement_text(s, lines), loop_headers)]
+        s.text = statement_text(s, lines)
+        s.kind = statement_kind(s, s.text, loop_headers)
+        tokens += [STMT_SEP, ref(s.index), s.kind]
         falls_through = False
         last_op = None  # an opcode repeated in a row is written once
         for inst in s.insts:
@@ -219,9 +250,9 @@ def is_straight_line(tokens: list[str]) -> bool:
     return not any(t in EDGES or t == DETACHED or t in HEADER_KINDS for t in tokens)
 
 
-def cflow_request(bc: EditableBytecode, lines: list[str]) -> tuple[list[Statement], list[str]] | None:
-    """Statements and model input of `bc`; None for comprehensions and code objects without statements."""
+def cflow_request(bc: EditableBytecode, lines: list[str]) -> CflowRequest | None:
+    """Control flow model request for `bc`; None for comprehensions and code objects without statements."""
     if bc.is_comprehension:
         return None
     stmts, tokens = encode_code_object(bc, lines)
-    return (stmts, tokens) if stmts else None
+    return CflowRequest(tokens, [shape_of(s.kind, s.text) for s in stmts], PythonVersion(bc.version), stmts) if stmts else None
