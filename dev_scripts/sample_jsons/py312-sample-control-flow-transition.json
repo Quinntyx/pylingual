@@ -1,0 +1,19 @@
+{
+    "base_repo_name": "sample_user/py312-sample_name-transition",
+    "dataset_dirs": ["./cache-dir/datasets/py312-cflow/cflow"],
+    "cache_dir": "./cache-dir",
+    "max_stmts": 512,
+    "max_input_tokens": 2048,
+    "push_to_hub": false,
+    "model_parameters": {
+        "d_model": 256,
+        "layers": 4,
+        "heads": 8,
+        "d_ff": 1024
+    },
+    "training_parameters": {
+        "batch_size": 64,
+        "epochs": 16,
+        "learning_rate": 1e-3
+    }
+}

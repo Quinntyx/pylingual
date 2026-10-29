@@ -65,6 +65,12 @@ uv run prepare_dataset.py sample_jsons/py312-sample-control-flow-nas-data.json -
 
 Models are compared on the [PyLingual evaluation dataset](https://github.com/syssec-utd/pylingual_eval_dataset) v1 (`git clone --branch v1.1.0 --depth 1`), whose `python-3.x` directories `bench_cflow.py` reads directly.
 
+The transition model (`ARCH: transition`, `pylingual/control_flow_reconstruction/transition.py`) encodes the statements and writes the skeleton one grammar action at a time, pointing at statements instead of naming them. It trains from the same rows and model JSON format (`sample_jsons/py312-sample-control-flow-transition.json`):
+
+```
+cd control_flow && uv run train_transition.py ../sample_jsons/py312-sample-control-flow-transition.json
+```
+
 Every skeleton a model gives must fit the block grammar (`pylingual/control_flow_reconstruction/block_grammar.py`), Python's block structure as a pushdown automaton, so the source rendered from it compiles. The dataset rows carry the statement `shapes` and `version` the grammar needs. To compare models on the same files, with the gold segmentation and lines:
 
 ```
