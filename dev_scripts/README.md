@@ -57,4 +57,11 @@ uv run prepare_dataset.py sample_jsons/py312-sample-control-flow-data.json --sta
 uv run train_models.py --control-flow sample_jsons/py312-sample-control-flow.json --nproc_per_node 4
 ```
 
-To use it, add `CONTROL_FLOW_MODEL: {REPO: <HuggingFace repo or absolute path>, REVISION: main}` to the version in `decompiler_config.yaml`. Code objects that fail the equivalence check fall back to the model's other beams, then to the control flow templates, then to re-segmentation. Changing the output of `pylingual/control_flow_reconstruction/model_view.py` needs new models.
+Every skeleton a model gives must fit the block grammar (`pylingual/control_flow_reconstruction/block_grammar.py`), Python's block structure as a pushdown automaton, so the source rendered from it compiles. The dataset rows carry the statement `shapes` and `version` the grammar needs. To compare models on the same files, with the gold segmentation and lines:
+
+```
+uv run bench_cflow.py ./cache-dir/datasets/py312-cflow/code/test --model <HuggingFace repo or directory> --out bench.json
+uv run bench_cflow.py ./cache-dir/datasets/py312-cflow/code/test --baseline
+```
+
+To use a model, add `CONTROL_FLOW_MODEL: {REPO: <HuggingFace repo or absolute path>, REVISION: main}` to the version in `decompiler_config.yaml`, with `ARCH: <name>` for a model other than the T5 one (see `PREDICTORS` in `pylingual/models.py`). Code objects that fail the equivalence check fall back to the model's other beams, then to the control flow templates, then to re-segmentation. Changing the output of `pylingual/control_flow_reconstruction/model_view.py` needs new models.
