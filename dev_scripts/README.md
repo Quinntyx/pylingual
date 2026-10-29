@@ -72,4 +72,10 @@ uv run bench_cflow.py ./cache-dir/datasets/py312-cflow/code/test --model <Huggin
 uv run bench_cflow.py ./cache-dir/datasets/py312-cflow/code/test --baseline
 ```
 
+The chart parser model (`ARCH: chart`, `pylingual/control_flow_reconstruction/chart_model.py`) is an encoder that orders the statements and scores blocks over them, with an exact search over the skeletons the grammar accepts (`chart.py`). It trains from a model JSON too, and is benched with `--arch chart`:
+
+```
+uv run control_flow/train_chart.py sample_jsons/py312-sample-control-flow-chart.json
+```
+
 To use a model, add `CONTROL_FLOW_MODEL: {REPO: <HuggingFace repo or absolute path>, REVISION: main}` to the version in `decompiler_config.yaml`, with `ARCH: <name>` for a model other than the T5 one (see `PREDICTORS` in `pylingual/models.py`). Code objects that fail the equivalence check fall back to the model's other beams, then to the control flow templates, then to re-segmentation. Changing the output of `pylingual/control_flow_reconstruction/model_view.py` needs new models.
