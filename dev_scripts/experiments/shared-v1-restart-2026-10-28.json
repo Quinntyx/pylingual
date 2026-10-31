@@ -26,5 +26,18 @@
     "fixed_in_trainer": "Universal learning rate, weight decay, precision and epochs are fixed in train_universal_models.py; the stage entries above record them.",
     "batch": "Global batches match October (statement 72, MLM 28, segmentation 28, LoRA 72). Per-device sizes are the largest divisors that fit a 24 GB 4090: statement 36 overflowed at 22 GiB, 24x3 peaked at 16.2 GiB; LoRA 36x2 peaked at 17.1 GiB; MLM 28 at 12.0 GiB; segmentation 28 at 5.9 GiB.",
     "save_steps": "About one checkpoint (and Hub push) per hour at the probed triplesec1 throughput."
+  },
+  "results": {
+    "completed": "2026-10-31T01:49:11Z",
+    "history": "triplesec1 was paused 2026-10-29 16:50-20:46 UTC for overheating; statement resumed from the step-30000 Hub checkpoint with optimizer state intact. triplesec1 throttled at ~90 C (0.7-1.5 GHz) for the whole run.",
+    "stages": {
+      "mlm": {"host": "triplesec2-gpu", "hub": {"repo_id": "syssec-utd/pylingual-shared-mlm-v1", "revision": "ff80e42ec1de0eecc5bf76de0268af4e6043e456"}, "global_step": 110050, "train_loss": 0.3963},
+      "segmentation": {"host": "triplesec2-gpu", "hub": {"repo_id": "syssec-utd/pylingual-shared-segmentation-v1", "revision": "afc2dd1fd4937480eb37ab4ffe35c808a1222b6e"}, "global_step": 110050, "train_loss": 0.0064},
+      "statement": {"host": "triplesec1-gpu", "hub": {"repo_id": "syssec-utd/pylingual-shared-statement-v1", "revision": "3e42fd302a6aef684e3cf4748251bf716be99482"}, "global_step": 129534, "train_loss": 0.0105},
+      "lora-3.14": {"host": "triplesec1-gpu", "hub": {"repo_id": "syssec-utd/pylingual-shared-lora-statement-3.14-v1", "revision": "b2112ae09451bbe6bc833ff1a7ae6917c0309a0a"},
+                    "optimizer_updates": 141452, "encoded_rows": 5092229, "train_loss": 0.02448, "validation_loss": 0.00817, "train_seconds": 63003},
+      "lora-3.15": {"host": "triplesec2-gpu", "hub": {"repo_id": "syssec-utd/pylingual-shared-lora-statement-3.15-v1", "revision": "edf011de63a21b5256b459aad68ef8f7f6e336db"},
+                    "optimizer_updates": 140084, "encoded_rows": 5043002, "train_loss": 0.02400, "validation_loss": 0.00896, "train_seconds": 39776}
+    }
   }
 }
