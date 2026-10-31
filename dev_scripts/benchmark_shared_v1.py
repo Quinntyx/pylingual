@@ -161,6 +161,16 @@ def runtime(root, arm):
                                  "USE_SEGMENTATION_ADAPTERS": False}}
 
 
+def preflight(config, version):
+    """Translate one statement without the decompiler's fallback, which turns any generation error
+    (e.g. a missing kernel toolchain) into a "line too long" placeholder and a silent CompileError."""
+    from pylingual.models import load_models
+    from pylingual.utils.version import PythonVersion
+    _, translator = load_models(config_file=config, version=PythonVersion(version))
+    with translator.bank.use(translator.version):
+        translator._translate_and_decode(["LOAD_NAME , <0> LOAD_CONST , <1> CALL , 1 STORE_NAME , <2>"])
+
+
 def unit(args, plan):
     import torch
     from dev_scripts.evaluate_shared import file_metrics
@@ -185,6 +195,7 @@ def unit(args, plan):
     settings = SimpleNamespace(output=output, config=config, versions=[args.version], dataset=checkout(args.root, args.release),
                                timeout=args.timeout, resume=True)
     if not (output/"complete.json").exists():
+        preflight(config, args.version)
         file_metrics(settings, selected)
         rows = [json.loads(line) for line in (output/"file_results.jsonl").open()]
         if len(rows) != len(selected["files"]) or len({row["relative"] for row in rows}) != len(rows):

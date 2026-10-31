@@ -13,6 +13,9 @@ mkdir -p "$root/logs"
 log="$root/logs/host.log"
 python=.venv/bin/python
 export PYTHONPATH=. TOKENIZERS_PARALLELISM=false OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=1
+# torch 2.14 routes some eager attention matmuls to Triton kernels that need a C compiler, which
+# these hosts lack; generation then fails and every statement silently becomes a placeholder.
+export TORCH_DISABLE_NATIVE_JIT=1
 
 # A fresh metadata file per launch, so a stale port can never be picked up.
 compilers_json="$root/logs/compilers-$(date +%Y%m%dT%H%M%S).json"
