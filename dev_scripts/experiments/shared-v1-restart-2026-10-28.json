@@ -39,5 +39,20 @@
       "lora-3.15": {"host": "triplesec2-gpu", "hub": {"repo_id": "syssec-utd/pylingual-shared-lora-statement-3.15-v1", "revision": "edf011de63a21b5256b459aad68ef8f7f6e336db"},
                     "optimizer_updates": 140084, "encoded_rows": 5043002, "train_loss": 0.02400, "validation_loss": 0.00896, "train_seconds": 39776}
     }
+  },
+  "benchmark": {
+    "approved": "User approved on 2026-10-31: eval v1 and v2, 3.14 and 3.15 files only.",
+    "completed": "2026-11-01T00:40:50Z",
+    "code": "benchmark_shared_v1.py + run_shared_v1_benchmark.sh at 381a6e8; see SHARED_V1_BENCHMARK_20261031.md",
+    "protocol": "strict full-file bytecode equivalence, FP32, 300 s per file, every listed file; compilers 3.14.6 / 3.15.0b2; TORCH_DISABLE_NATIVE_JIT=1",
+    "releases": {"v1": "v1.1.0 (a60d3b95748283ba0fbcd5e94da307d5bd5df870)", "v2": "v2.0.1 (258bc0380f7c8550fa28f294b896cf168a5e4055)"},
+    "training_source_overlap": 0,
+    "report_sha256": "55870fed4ca4123a4b2906ddbc4236f32ad9f1628c80192c864c60e6fd0c5fc0",
+    "results": {
+      "v1": {"3.14": {"files": 4991, "no_adapter": 4009, "statement_adapter": 4064, "newly_correct": 75, "regressed": 20, "gain_pp": 1.102},
+             "3.15": {"files": 4991, "no_adapter": 3259, "statement_adapter": 3816, "newly_correct": 566, "regressed": 9, "gain_pp": 11.160}},
+      "v2": {"3.14": {"files": 1915, "no_adapter": 630, "statement_adapter": 656, "newly_correct": 40, "regressed": 14, "gain_pp": 1.358},
+             "3.15": {"files": 2078, "no_adapter": 485, "statement_adapter": 692, "newly_correct": 215, "regressed": 8, "gain_pp": 9.962}}
+    }
   }
 }
