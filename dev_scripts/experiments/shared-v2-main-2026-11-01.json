@@ -12,9 +12,10 @@
   },
   "tokenizer": {"repo_id": "syssec-utd/pylingual-shared-tokenizer-v1", "revision": "d23233a4bb237dcc3b1660e46a42f9189eaf0f6c"},
   "backbone_corpus": {"repo_id": "syssec-utd/pylingual-shared-backbone-corpus-v2", "revision": "3dc69d6e21e5ffa3ce461caf7d7bb791bb2f603a"},
-  "adapter_corpus": {"repo_id": "syssec-utd/pylingual-shared-adapter-corpus-v2", "revision": null},
+  "adapter_corpus": {"repo_id": "syssec-utd/pylingual-shared-adapter-corpus-v2", "revision": "95f11e98728b0cf350a684e202af02e5398781f0"},
   "encoded": {"repo_id": "syssec-utd/pylingual-shared-encoded-v2", "revision": "87be6f40c315dc8d136d0df6690470edb021becd"},
-  "encoded_paths": {},
+  "encoded_paths": {"adapter/3.14/statement/train": {"revision": "4000671cd6e647ac26dbc9618f2871e4756ad52b"}, "adapter/3.14/statement/validation": {"revision": "4000671cd6e647ac26dbc9618f2871e4756ad52b"},
+                    "adapter/3.15/statement/train": {"revision": "4000671cd6e647ac26dbc9618f2871e4756ad52b"}, "adapter/3.15/statement/validation": {"revision": "4000671cd6e647ac26dbc9618f2871e4756ad52b"}},
   "initialization": {"repo_id": "Salesforce/codet5-base", "revision": "02cd2d31bb7c6d0e4d91156167b2de044989c733"},
   "lanes": {"triplesec1-gpu": ["statement", "lora-3.14"], "triplesec2-gpu": ["segmentation", "lora-3.15"]},
   "stages": {
