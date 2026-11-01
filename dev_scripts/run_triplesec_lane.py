@@ -21,7 +21,12 @@ import time
 from huggingface_hub import HfApi, snapshot_download
 
 REPO = Path(__file__).resolve().parents[1]
+# v1 plans omit these; the v2 main run trains the backbone on 3.6-3.15 with nothing held out.
 TRAINING_VERSIONS = [f"3.{minor}" for minor in range(6, 15)]
+
+
+def backbone_versions(plan):
+    return plan.get("backbone_versions", TRAINING_VERSIONS), plan.get("held_out_version", "3.15")
 
 
 def fetch(root, source, patterns, repo_type="dataset"):
@@ -33,8 +38,10 @@ def fetch(root, source, patterns, repo_type="dataset"):
 
 
 def encoded(root, plan, path):
-    directory = fetch(root, plan["encoded"], [path+"/*", path+"/**"])/path
-    record = {**plan["encoded"], "path": path}
+    # Paths published later (e.g. adapter data encoded after the backbones started) pin their own revision.
+    source = {**plan["encoded"], **plan.get("encoded_paths", {}).get(path, {})}
+    directory = fetch(root, source, [path+"/*", path+"/**"])/path
+    record = {**source, "path": path}
     (directory/"hub-source.json").write_text(json.dumps(record, indent=2)+"\n")
     return directory
 
@@ -109,7 +116,9 @@ def family(root, plan):
     if (destination/"family.json").exists() and json.loads((destination/"family.json").read_text()).get("complete"):
         return destination
     checkpoint = final_model(root, plan["stages"]["statement"]["hub_repo"], root/"universal/statement/final")
-    publish(checkpoint, tokenizer(root, plan, "statement"), "statement", destination, training_versions=TRAINING_VERSIONS)
+    versions, held_out = backbone_versions(plan)
+    publish(checkpoint, tokenizer(root, plan, "statement"), "statement", destination, training_versions=versions,
+            held_out_version=held_out)
     metadata = json.loads((destination/"family.json").read_text())
     metadata["hub"] = json.loads((checkpoint/"hub-source.json").read_text())
     (destination/"family.json").write_text(json.dumps(metadata, indent=2)+"\n")

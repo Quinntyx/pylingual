@@ -1,7 +1,7 @@
 """Sample fresh per-version adapter pools on this machine from the locally mounted NAS.
 
-Each version gets 54,500 training files (49,050 PyPI + 5,450 CSN) and 500 validation files
-(450 + 50). Validation files are exactly those whose canonical hash falls in the reserved
+Each version gets --train-files training and --validation-files validation files, 90% PyPI and
+10% CSN (v1: 54,500 + 500; v2: 100,000 + 1,000). Validation files are exactly those whose canonical hash falls in the reserved
 bucket, so the two splits never share a source. Every pool is disjoint from the backbone corpus,
 from every eval-dataset source and from the other version's pool, by raw SHA-512, canonical hash
 and NAS identity. Output matches prepare_full_training_data's --scope adapter input.
@@ -27,7 +27,6 @@ from dev_scripts.prepare_tokenizer_corpus import extract
 from dev_scripts.run_local_tokenizer_preparation import PINNED, executable
 from dev_scripts.run_remote_ablation import Compiler, Gateway, Handler
 
-TARGETS = {"train": {"pypi": 49050, "csn": 5450}, "validation": {"pypi": 450, "csn": 50}}
 PATCHES = {**PINNED, "3.15": "3.15.0b2"}
 
 
@@ -50,10 +49,16 @@ def main():
     parser.add_argument("--seed", type=int, default=20261029)
     parser.add_argument("--workers", type=int, default=16)
     parser.add_argument("--compile-copies", type=int, default=4)
+    parser.add_argument("--train-files", type=int, default=54500, help="Per version, split 90/10 PyPI/CSN")
+    parser.add_argument("--validation-files", type=int, default=500, help="Per version, split 90/10 PyPI/CSN")
     parser.add_argument("--smoke-scale", type=int, default=0, help="Divide every quota by this; smoke only, never publish")
     args = parser.parse_args()
-    targets = {split: {corpus: max(1, count//args.smoke_scale) if args.smoke_scale else count for corpus, count in quota.items()}
-               for split, quota in TARGETS.items()}
+    if args.train_files % 10 or args.validation_files % 10:
+        parser.error("Pool sizes must allow an exact 90/10 PyPI/CSN split")
+    quota = {split: {"pypi": files*9//10, "csn": files//10}
+             for split, files in (("train", args.train_files), ("validation", args.validation_files))}
+    targets = {split: {corpus: max(1, count//args.smoke_scale) if args.smoke_scale else count for corpus, count in counts.items()}
+               for split, counts in quota.items()}
     args.output.mkdir(parents=True, exist_ok=True)
     backbone = [json.loads(line) for line in (args.backbone/"accepted.jsonl").open()]
     excluded = json.loads(args.exclusions.read_text())

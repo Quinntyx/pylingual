@@ -19,11 +19,12 @@ import subprocess
 import sys
 import threading
 
+from dev_scripts.prepare_tokenizer_corpus import HELD_OUT_VERSIONS
 from dev_scripts.run_remote_ablation import Compiler, Gateway, Handler
 
 # Same patch releases as the 2026-10-19 family, so bytecode matches across corpora.
 PINNED = {"3.6": "3.6.15", "3.7": "3.7.17", "3.8": "3.8.20", "3.9": "3.9.25", "3.10": "3.10.20",
-          "3.11": "3.11.15", "3.12": "3.12.13", "3.13": "3.13.14", "3.14": "3.14.6"}
+          "3.11": "3.11.15", "3.12": "3.12.13", "3.13": "3.13.14", "3.14": "3.14.6", "3.15": "3.15.0b2"}
 IDENTITY = re.compile(r"[0-9a-f]{128}|[0-9]+")
 
 
@@ -74,6 +75,7 @@ def main():
     parser.add_argument("--workers", type=int, default=16)
     parser.add_argument("--compile-copies", type=int, default=2)
     parser.add_argument("--sample-limit", type=int, default=0, help="Smoke runs only; never publish their output")
+    parser.add_argument("--versions", nargs="+", choices=list(PINNED), default=HELD_OUT_VERSIONS)
     args = parser.parse_args()
     args.workspace.mkdir(parents=True, exist_ok=True)
     exclusion_path, reserved_path = args.workspace/"excluded-source-identities.json", args.workspace/"reserved-benchmark-sources.json"
@@ -83,8 +85,8 @@ def main():
         reserved_path.write_text(json.dumps(reserved)+"\n")
     compilers, pools, metadata = [], {}, {}
     try:
-        for version, patch in PINNED.items():
-            path = executable(version)
+        for version in args.versions:
+            patch, path = PINNED[version], executable(version)
             pools[version] = queue.Queue()
             for _ in range(args.compile_copies):
                 compiler = Compiler(path, str(args.repo/"dev_scripts/compile_source_server.py"))
@@ -105,7 +107,7 @@ def main():
                        "--source-reserved", reserved_path, "--nas-root", args.nas_root,
                        "--nas-catalog", args.workspace/"nas-catalog.json.gz", "--gateway-port", gateway.server_address[1],
                        "--workers", args.workers, "--files", args.files, "--seed", args.seed,
-                       "--sample-limit", args.sample_limit]
+                       "--sample-limit", args.sample_limit, "--versions", *args.versions]
             environment = {**os.environ, "PYTHONPATH": str(args.repo), "OMP_NUM_THREADS": "1", "TOKENIZERS_PARALLELISM": "false"}
             try:
                 subprocess.run([str(value) for value in command], check=True, cwd=args.repo, env=environment)

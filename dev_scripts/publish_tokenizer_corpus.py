@@ -37,15 +37,20 @@ def record(entry):
             "segmentation": [{"source": s, "bytecode": b, "boundary": str(y)} for s, b, y in rows["segmentation"]]}
 
 
-def card(repo_id, manifest, commit):
+ROLES = {"tokenizer": ("PyLingual shared tokenizer corpus", "fit the shared-backbone PyLingual tokenizers"),
+         "backbone": ("PyLingual shared backbone corpus", "train the shared statement and segmentation backbones")}
+
+
+def card(repo_id, manifest, commit, role="tokenizer"):
     counts = "\n".join(f"| {v} | {c['pypi']} | {c['csn']} |" for v, c in manifest["counts"].items())
+    title, purpose = ROLES[role]
     return f"""---
 license: other
-pretty_name: PyLingual shared tokenizer corpus
+pretty_name: {title}
 ---
 # {repo_id}
 
-Version-balanced corpus used to fit the shared-backbone PyLingual tokenizers. Each row is one
+Version-balanced corpus used to {purpose}. Each row is one
 source file compiled for exactly one Python version, with every row the PyLingual converter
 produced for the statement and segmentation tasks.
 
@@ -70,6 +75,7 @@ def main():
     parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument("--repo-id", required=True)
     parser.add_argument("--shard-files", type=int, default=5000)
+    parser.add_argument("--role", choices=list(ROLES), default="tokenizer")
     args = parser.parse_args()
     data = args.workspace/"data"
     manifest = json.loads((data/"manifest.json").read_text())
@@ -90,7 +96,7 @@ def main():
         shutil.copy(args.workspace/name, staging/name)
     commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True,
                             cwd=Path(__file__).resolve().parent).stdout.strip()
-    (staging/"README.md").write_text(card(args.repo_id, manifest, commit))
+    (staging/"README.md").write_text(card(args.repo_id, manifest, commit, args.role))
     api = HfApi()
     api.create_repo(args.repo_id, repo_type="dataset", private=False, exist_ok=True)
     api.upload_large_folder(repo_id=args.repo_id, repo_type="dataset", folder_path=staging)

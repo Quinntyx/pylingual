@@ -13,7 +13,8 @@ def publish(checkpoint, tokenizer_directory, task, output, *, training_versions,
     checkpoint, tokenizer_directory, output = map(Path, (checkpoint, tokenizer_directory, output))
     if output.exists() or any(source.resolve() in output.resolve().parents for source in (checkpoint, tokenizer_directory)):
         raise ValueError("Output must be fresh and outside checkpoint/tokenizer directories")
-    if not training_versions or held_out_version in training_versions:
+    # held_out_version=None: the backbone trained on every version (the v2 main run).
+    if not training_versions or (held_out_version is not None and held_out_version in training_versions):
         raise ValueError("Backbone training versions must be explicit and exclude the held-out version")
     if task not in ("statement", "segmentation"):
         raise ValueError("Unknown backbone task")
@@ -62,7 +63,7 @@ if __name__ == "__main__":
     parser.add_argument("--task", choices=("statement", "segmentation"), required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--training-versions", nargs="+", required=True)
-    parser.add_argument("--held-out-version", default="3.15")
+    parser.add_argument("--held-out-version", default="3.15", type=lambda text: None if text == "none" else text)
     parser.add_argument("--smoke-only", action="store_true")
     args = parser.parse_args()
     print(publish(args.checkpoint, args.tokenizer, args.task, args.output, training_versions=args.training_versions,

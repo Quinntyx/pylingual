@@ -20,7 +20,7 @@ from transformers import set_seed
 from dev_scripts.resume_layout import checkpoint_world_size, validate_resume_layout
 from dev_scripts.loss_normalization import token_normalized_loss
 from dev_scripts import hub_checkpoints
-from dev_scripts.prepare_tokenizer_corpus import quotas
+from dev_scripts.prepare_tokenizer_corpus import ordered, quotas
 from pylingual.opcodes import OpcodeRegistry
 
 LABELS={"B":0,"I":1,"E":2}
@@ -97,13 +97,15 @@ def card(args,provenance,training_args):
     manifest=provenance["data_manifest"]
     hub=json.loads((args.data/"hub-source.json").read_text()) if (args.data/"hub-source.json").exists() else None
     batch=training_args.per_device_train_batch_size*training_args.gradient_accumulation_steps*training_args.world_size
+    versions=ordered(manifest["versions"])
+    scope=f"Python {versions[0]}-{versions[-1]}"+(" with 3.15 held out" if "3.15" not in versions else "")
     return f"""---
 license: other
 ---
 # {args.hub_repo}
 
 Universal (all-version) PyLingual {args.task} backbone for the shared-backbone + per-version LoRA
-study, trained on Python 3.6-3.14 with 3.15 held out. `last-checkpoint/` holds the latest
+study, trained on {scope}. `last-checkpoint/` holds the latest
 resumable Trainer checkpoint while training runs; the repo root holds the final model.
 
 - Data: {f"[`{hub['repo_id']}`](https://huggingface.co/datasets/{hub['repo_id']}) `{hub['path']}` at revision `{hub['revision']}`" if hub else "local"}
@@ -142,9 +144,9 @@ def main():
         if args.ordinary_version:
             if manifest["files"]!=54500 or manifest["versions"]!={args.ordinary_version:54500} or manifest["corpora"]!={"pypi":49050,"csn":5450}:
                 raise ValueError("Ordinary controls require exactly54,500single-version90/10trainingfiles")
-        elif manifest["versions"]!={v:sum(c.values()) for v,c in quotas(manifest["files"]).items()} or \
+        elif manifest["versions"]!={v:sum(c.values()) for v,c in quotas(manifest["files"],list(manifest["versions"])).items()} or \
                 manifest["corpora"]!={"pypi":manifest["files"]*9//10,"csn":manifest["files"]//10}:
-            raise ValueError("Full universal training requires a version-balanced 90/10 corpus over 3.6-3.14")
+            raise ValueError("Full universal training requires a version-balanced 90/10 corpus")
     args.output.mkdir(parents=True,exist_ok=True)
     tokenizer=AutoTokenizer.from_pretrained(args.tokenizer)
     registry=None if args.ordinary_version else OpcodeRegistry.load(args.tokenizer/"opcode_registry.json",tokenizer)

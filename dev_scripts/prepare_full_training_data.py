@@ -52,15 +52,24 @@ def encoded_generator(records, task, tokenizer_dir, ordinary=False, bindings=Non
                     yield {"input_ids": features["input_ids"], "attention_mask": features["attention_mask"],
                            "labels": [-100 if i is None else LABELS[bounds[originals[i]]] for i in indices]}
 
-def prepare(data, tokenizer, task, output, workers, limit=0, scope="universal", bindings_file=None):
+def prepare(data, tokenizer, task, output, workers, limit=0, scope="universal", bindings_file=None, relocate=None):
     journal = data/"accepted.jsonl"
     digest = hashlib.sha256(journal.read_bytes()).hexdigest()
     source_manifest = json.loads((data/"manifest.json").read_text())
     records = [json.loads(line) for line in journal.open()]
+    if relocate:
+        # Encoding on a host other than the one that built the journal: same bytes, moved tree.
+        old, new = relocate.split("=", 1)
+        for record in records:
+            if not record["chunk"].startswith(old):
+                raise ValueError("Chunk path outside the relocated prefix: "+record["chunk"])
+            record["chunk"] = new+record["chunk"][len(old):]
     if not source_manifest["complete"] or len(records) != source_manifest["files"]:
         raise ValueError("Incomplete source preparation")
-    if scope == "universal" and "3.15" in {row["version"] for row in records}:
-        raise ValueError("Held-out version leaked into backbone training")
+    # The source manifest declares the backbone's versions (v1: 3.6-3.14 with 3.15 held out).
+    if scope == "universal" and ({row["version"] for row in records} != set(source_manifest["versions"])
+                                 or (source_manifest.get("heldout_315", True) and "3.15" in source_manifest["versions"])):
+        raise ValueError("Backbone rows do not match the corpus's declared versions")
     if len({row["canonical_sha256"] for row in records}) != len(records):
         raise ValueError("Duplicate source canonical")
     if limit:
@@ -68,7 +77,8 @@ def prepare(data, tokenizer, task, output, workers, limit=0, scope="universal", 
     elif scope == "universal":
         from dev_scripts.prepare_tokenizer_corpus import quotas
         cells = Counter((row["version"], row["corpus"]) for row in records)
-        if cells != Counter({(v, c): n for v, counts in quotas(len(records)).items() for c, n in counts.items()}):
+        expected = quotas(len(records), source_manifest["versions"])
+        if cells != Counter({(v, c): n for v, counts in expected.items() for c, n in counts.items()}):
             raise ValueError("Expected a full version-balanced 90/10 source-file mixture")
     registry_path = tokenizer/"opcode_registry.json"
     bindings = {}
@@ -112,5 +122,6 @@ def main():
     parser.add_argument("--smoke-files",type=int,default=0)
     parser.add_argument("--scope",choices=["universal","adapter","control"],default="universal")
     parser.add_argument("--bindings-file",type=Path)
-    args=parser.parse_args();prepare(args.data,args.tokenizer,args.task,args.output,args.workers,args.smoke_files,args.scope,args.bindings_file)
+    parser.add_argument("--relocate",metavar="OLD=NEW",help="Rewrite the journal's chunk path prefix (source tree copied to another host)")
+    args=parser.parse_args();prepare(args.data,args.tokenizer,args.task,args.output,args.workers,args.smoke_files,args.scope,args.bindings_file,args.relocate)
 if __name__=="__main__": main()

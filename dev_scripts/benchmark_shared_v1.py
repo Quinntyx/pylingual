@@ -25,6 +25,7 @@ from types import SimpleNamespace
 
 from dev_scripts.benchmark_full_retrain import pin, sha, stratified_summary
 from dev_scripts.hub_checkpoints import git_commit
+from dev_scripts.run_triplesec_lane import backbone_versions
 
 REPO = Path(__file__).resolve().parents[1]
 EVAL_REPO = "https://github.com/syssec-utd/pylingual_eval_dataset"
@@ -32,7 +33,6 @@ RELEASES = {"v1": ("v1.1.0", "a60d3b95748283ba0fbcd5e94da307d5bd5df870"),
             "v2": ("v2.0.1", "258bc0380f7c8550fa28f294b896cf168a5e4055")}
 VERSIONS = ("3.14", "3.15")
 ARMS = ("no_adapter", "statement_adapter")
-TRAINING_VERSIONS = [f"3.{minor}" for minor in range(6, 15)]
 IDENTITY_KEYS = ("source_sha512", "source_id", "payload_sha512")
 # Must agree between every adapter and the backbone they are merged onto.
 FAMILY_IDENTITY = ("backbone_id", "backbone_files_sha256", "tokenizer_sha256", "opcode_registry_sha256")
@@ -52,6 +52,11 @@ def identities(journals, output):
     print(json.dumps({"identities": len(found), "output": str(output)}))
 
 
+def backbone_arguments(plan):
+    versions, held_out = backbone_versions(plan)
+    return {"training_versions": versions, "held_out_version": held_out}
+
+
 def download(root, source, name, **patterns):
     from huggingface_hub import snapshot_download
     local = root/"hub"/name
@@ -68,7 +73,7 @@ def statement_family(root, plan, destination):
     pending = destination.with_name(destination.name+".tmp")
     if pending.exists():
         shutil.rmtree(pending)
-    publish(final, tokenizers/"statement", "statement", pending, training_versions=TRAINING_VERSIONS)
+    publish(final, tokenizers/"statement", "statement", pending, **backbone_arguments(plan))
     metadata = json.loads((pending/"family.json").read_text())
     metadata["hub"] = {"statement": stages["statement"]["hub"], "tokenizer": plan["tokenizer"]}
     for version in VERSIONS:
@@ -95,7 +100,7 @@ def segmentation_family(root, plan, destination):
     pending = destination.with_name(destination.name+".tmp")
     if pending.exists():
         shutil.rmtree(pending)
-    publish(final, tokenizers/"segmentation", "segmentation", pending, training_versions=TRAINING_VERSIONS)
+    publish(final, tokenizers/"segmentation", "segmentation", pending, **backbone_arguments(plan))
     metadata = json.loads((pending/"family.json").read_text())
     metadata["hub"] = {"segmentation": source, "tokenizer": plan["tokenizer"]}
     (pending/"family.json").write_text(json.dumps(metadata, indent=2)+"\n")

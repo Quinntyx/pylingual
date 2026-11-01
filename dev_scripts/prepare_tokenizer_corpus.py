@@ -108,14 +108,22 @@ def extract(job):
         signal.alarm(0)
 
 
-def quotas(total):
+# The v1 study held 3.15 out of the backbone; the v2 main run trains on 3.6-3.15.
+HELD_OUT_VERSIONS = [f"3.{minor}" for minor in range(6, 15)]
+
+
+def ordered(versions):
+    return sorted(versions, key=lambda version: tuple(map(int, version.split("."))))
+
+
+def quotas(total, versions=HELD_OUT_VERSIONS):
     if total % 10:
         raise ValueError("Total must allow an exact90/10 corpus split")
-    versions = [f"3.{minor}" for minor in range(6, 15)]
+    versions = ordered(versions)
     result = {version: {} for version in versions}
     for corpus, count in (("pypi", total*9//10), ("csn", total//10)):
         for index, version in enumerate(versions):
-            result[version][corpus] = count//9 + int(index < count % 9)
+            result[version][corpus] = count//len(versions) + int(index < count % len(versions))
     return result
 
 
@@ -132,13 +140,14 @@ def main():
     parser.add_argument("--workers", type=int, default=16)
     parser.add_argument("--files", type=int, default=100000)
     parser.add_argument("--seed", type=int, default=20261019)
+    parser.add_argument("--versions", nargs="+", default=HELD_OUT_VERSIONS)
     parser.add_argument("--sample-limit", type=int, default=0, help="Explicit smoke run, not a completed production corpus")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     excluded = json.loads(args.exclusions.read_text())
     forbidden_raw = set(excluded["source_sha512"])
     forbidden_canonical = set(excluded["canonical_sha256"])
-    wanted = quotas(args.files)
+    wanted = quotas(args.files, args.versions)
     journal = args.output/"accepted.jsonl"
     accepted = [json.loads(line) for line in journal.read_text().splitlines()] if journal.exists() else []
     counts = {version: Counter() for version in wanted}
@@ -260,7 +269,7 @@ def main():
         if counts != wanted or len(accepted) != args.files:
             raise ValueError("Final quotas did not match")
         manifest = {"complete": True, "files": len(accepted), "versions": list(wanted), "counts": counts,
-                    "seed": args.seed, "mix_unit": "unique source files", "heldout_315": True,
+                    "seed": args.seed, "mix_unit": "unique source files", "heldout_315": "3.15" not in wanted,
                     "exclusions_sha256": hashlib.sha256(args.exclusions.read_bytes()).hexdigest(),
                     "source_host": socket.gethostname() if args.nas_root else "syssec-adwaith1",
                     "nas_root": str(args.nas_root) if args.nas_root else None,
