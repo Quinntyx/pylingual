@@ -11,9 +11,9 @@
                 "rule": "build_adapter_pools: 90/10 PyPI/CSN, validation = canonical-hash reserved bucket, disjoint from the backbone corpus, eval sources and each other"}
   },
   "tokenizer": {"repo_id": "syssec-utd/pylingual-shared-tokenizer-v1", "revision": "d23233a4bb237dcc3b1660e46a42f9189eaf0f6c"},
-  "backbone_corpus": {"repo_id": "syssec-utd/pylingual-shared-backbone-corpus-v3", "revision": null},
+  "backbone_corpus": {"repo_id": "syssec-utd/pylingual-shared-backbone-corpus-v3", "revision": "6b71d099fcbfeabbe159dd011e907ae52ab6e4ed"},
   "adapter_corpus": {"repo_id": "syssec-utd/pylingual-shared-adapter-corpus-v3", "revision": null},
-  "encoded": {"repo_id": "syssec-utd/pylingual-shared-encoded-v3", "revision": null},
+  "encoded": {"repo_id": "syssec-utd/pylingual-shared-encoded-v3", "revision": "11616fd4db16c5c567c189210702da68b0deb7cb"},
   "encoded_paths": {},
   "initialization": {"repo_id": "Salesforce/codet5-base", "revision": "02cd2d31bb7c6d0e4d91156167b2de044989c733"},
   "lanes": {"triplesec1-gpu": ["statement", "lora-3.14"], "triplesec2-gpu": ["segmentation", "lora-3.15"]},
