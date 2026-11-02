@@ -1,0 +1,41 @@
+{
+  "description": "Main shared-backbone + per-version LoRA run (v3): restart dataset collection for 150k backbone files over Python 3.6-3.15 and 150k training files per adapter. Reuse the frozen v1 tokenizer; every other setting and the v1/v2 evaluation protocol are unchanged from v2. Do not resume v2 weights.",
+  "approved": true,
+  "approval": "User approved on 2026-11-02: abort the 100k run, restart from dataset collection with 150k files, then rerun training. All other settings unchanged; do not retrain the tokenizer. This means 150k backbone files and 150k training files per LoRA version; retain 1k validation files per version.",
+  "backbone_versions": ["3.6", "3.7", "3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14", "3.15"],
+  "held_out_version": null,
+  "data_recipe": {
+    "backbone": {"files": 150000, "per_version": {"pypi": 13500, "csn": 1500}, "seed": 20261101,
+                 "rule": "run_local_tokenizer_preparation --versions 3.6..3.15: seeded NAS sampling, canonical-hash training bucket only, every eval v1/v2 source excluded by NAS identity, raw SHA-512 and canonical hash"},
+    "adapter": {"versions": ["3.14", "3.15"], "train_files": 150000, "validation_files": 1000, "seed": 20261102,
+                "rule": "build_adapter_pools: 90/10 PyPI/CSN, validation = canonical-hash reserved bucket, disjoint from the backbone corpus, eval sources and each other"}
+  },
+  "tokenizer": {"repo_id": "syssec-utd/pylingual-shared-tokenizer-v1", "revision": "d23233a4bb237dcc3b1660e46a42f9189eaf0f6c"},
+  "backbone_corpus": {"repo_id": "syssec-utd/pylingual-shared-backbone-corpus-v3", "revision": null},
+  "adapter_corpus": {"repo_id": "syssec-utd/pylingual-shared-adapter-corpus-v3", "revision": null},
+  "encoded": {"repo_id": "syssec-utd/pylingual-shared-encoded-v3", "revision": null},
+  "encoded_paths": {},
+  "initialization": {"repo_id": "Salesforce/codet5-base", "revision": "02cd2d31bb7c6d0e4d91156167b2de044989c733"},
+  "lanes": {"triplesec1-gpu": ["statement", "lora-3.14"], "triplesec2-gpu": ["segmentation", "lora-3.15"]},
+  "stages": {
+    "statement": {"hub_repo": "syssec-utd/pylingual-shared-statement-v3", "epochs": 2, "batch_size": 24, "accumulation": 3,
+                  "learning_rate": 2e-5, "weight_decay": 0.01, "precision": "fp16", "seed": 20261020, "save_steps": 10000},
+    "mlm": {"hub_repo": "syssec-utd/pylingual-shared-mlm-v3", "epochs": 2, "batch_size": 28, "accumulation": 1,
+            "learning_rate": 5e-5, "weight_decay": 0, "precision": "fp32", "seed": 20261020, "save_steps": 8000},
+    "segmentation": {"hub_repo": "syssec-utd/pylingual-shared-segmentation-v3", "epochs": 2, "batch_size": 28, "accumulation": 1,
+                     "learning_rate": 2e-5, "weight_decay": 0.01, "precision": "fp16", "seed": 20261020, "save_steps": 25000},
+    "lora-3.14": {"hub_repo": "syssec-utd/pylingual-shared-lora-statement-3.14-v3", "epochs": 2, "rank": 64, "batch_size": 36,
+                  "accumulation": 2, "learning_rate": 2e-5, "precision": "fp16", "seed": 20261020, "save_steps": 10000},
+    "lora-3.15": {"hub_repo": "syssec-utd/pylingual-shared-lora-statement-3.15-v3", "epochs": 2, "rank": 64, "batch_size": 36,
+                  "accumulation": 2, "learning_rate": 2e-5, "precision": "fp16", "seed": 20261020, "save_steps": 10000}
+  },
+  "notes": {
+    "supersedes": "shared-v2-main-2026-11-01.json; the 100k run was stopped by user request. Fresh roots and v3 Hub repos isolate all v2 checkpoints. Pending input revisions must be pinned before any lane starts.",
+    "same_as_v2": "Only backbone and adapter training file budgets change from 100k to 150k. Validation size, 90/10 mix, version allocation, seeds, epochs, optimizer settings, batches, precision, rank, checkpoint schedule, initialization, host layout, exclusion protocol, and v1/v2 benchmark remain unchanged.",
+    "tokenizer": "Reuse the exact v1 statement and segmentation tokenizers and their registries. No tokenizer fitting, vocabulary changes, or opcode-slot changes.",
+    "encoding_hosts": "triplesec1 encodes universal/statement and adapter/3.14; triplesec2 encodes universal/segmentation and adapter/3.15. Each publishes its paths before training consumes them.",
+    "workspace": "/home/henry/docs/pylingual-experiments/shared-training-v3-150k-20261102",
+    "remote_data_root": "~/pylingual-v3-data",
+    "remote_training_root": "~/pylingual-runs-v3"
+  }
+}
