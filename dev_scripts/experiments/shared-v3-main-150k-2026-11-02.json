@@ -56,11 +56,22 @@
   },
   "benchmark": {
     "approved": "Same official v1/v2 3.14/3.15 benchmark as the approved v2 plan; user explicitly requested it for v3.",
-    "status": "preparing",
+    "status": "complete",
+    "verified_utc": "2026-11-05T15:35:52.681017+00:00",
+    "source_commit": "d084b91508b57b6030acd6d913b6f5e79cd8417e",
     "code": "benchmark_shared_v1.py, unchanged scoring and paired no_adapter/statement_adapter arms",
     "protocol": "strict full-file bytecode equivalence, FP32, 300 s per file, every listed file; compilers 3.14.6 / 3.15.0b2; TORCH_DISABLE_NATIVE_JIT=1",
     "releases": {"v1": "v1.1.0 (a60d3b95748283ba0fbcd5e94da307d5bd5df870)", "v2": "v2.0.1 (258bc0380f7c8550fa28f294b896cf168a5e4055)"},
     "remote_root": "~/pylingual-bench-v3",
-    "local_results": "/home/henry/docs/pylingual-experiments/shared-training-v3-150k-20261102/bench-results"
+    "local_results": "/home/henry/docs/pylingual-experiments/shared-training-v3-150k-20261102/bench-results",
+    "report": "dev_scripts/SHARED_V3_BENCHMARK_20261105.md",
+    "audited_record": {"path": "dev_scripts/experiments/shared-v3-benchmark-2026-11-05.json", "sha256": "5d0c834f08e9b5435f5f40bf268c286ed08082a1951a54c8b88a6b7f74c1a367"},
+    "verification": {"evaluations": 27950, "completed_units": 8, "dropped_files": 0, "duplicate_rows": 0, "model_load_errors": 0, "source_overlap": 0},
+    "paired_statement_lora": {
+      "v1/3.14": {"files": 4991, "no_adapter_equal": 4137, "statement_adapter_equal": 4155, "newly_correct": 38, "regressed": 20, "net": 18, "gain_pp": 0.360649168503306},
+      "v1/3.15": {"files": 4991, "no_adapter_equal": 4124, "statement_adapter_equal": 4139, "newly_correct": 45, "regressed": 30, "net": 15, "gain_pp": 0.30054097375275496},
+      "v2/3.14": {"files": 1915, "no_adapter_equal": 711, "statement_adapter_equal": 717, "newly_correct": 26, "regressed": 20, "net": 6, "gain_pp": 0.3133159268929504},
+      "v2/3.15": {"files": 2078, "no_adapter_equal": 846, "statement_adapter_equal": 849, "newly_correct": 27, "regressed": 24, "net": 3, "gain_pp": 0.14436958614051973}
+    }
   }
 }

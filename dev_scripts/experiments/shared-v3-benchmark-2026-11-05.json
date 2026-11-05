@@ -1,0 +1,1229 @@
+{
+  "study": "Shared v3: 150k backbone files and 150k training files per statement LoRA; frozen v1 tokenizer",
+  "completed_utc": "2026-11-05T15:35:52.681017+00:00",
+  "source_commit": "d084b91508b57b6030acd6d913b6f5e79cd8417e",
+  "plan_at_run": {
+    "path": "dev_scripts/experiments/shared-v3-main-150k-2026-11-02.json",
+    "sha256": "091c8e2c8ce51a67e05c2e1bb5468d00f176d0b8d4f9554fcf2c3559b36617e0"
+  },
+  "protocol": {
+    "strict_full_file_bytecode_equivalence": true,
+    "precision": "FP32",
+    "timeout_seconds": 300,
+    "all_official_files_kept": true,
+    "errors_and_timeouts_count_as_failures": true,
+    "compilers": [
+      "3.14.6",
+      "3.15.0b2"
+    ],
+    "TORCH_DISABLE_NATIVE_JIT": "1",
+    "statement_adapter_only": true,
+    "segmentation_adapters": false
+  },
+  "data_recipe": {
+    "backbone": {
+      "files": 150000,
+      "per_version": {
+        "pypi": 13500,
+        "csn": 1500
+      },
+      "seed": 20261101,
+      "rule": "run_local_tokenizer_preparation --versions 3.6..3.15: seeded NAS sampling, canonical-hash training bucket only, every eval v1/v2 source excluded by NAS identity, raw SHA-512 and canonical hash"
+    },
+    "adapter": {
+      "versions": [
+        "3.14",
+        "3.15"
+      ],
+      "train_files": 150000,
+      "validation_files": 1000,
+      "seed": 20261102,
+      "rule": "build_adapter_pools: 90/10 PyPI/CSN, validation = canonical-hash reserved bucket, disjoint from the backbone corpus, eval sources and each other"
+    }
+  },
+  "backbone_versions": [
+    "3.6",
+    "3.7",
+    "3.8",
+    "3.9",
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14",
+    "3.15"
+  ],
+  "input_artifacts": {
+    "tokenizer": {
+      "repo_id": "syssec-utd/pylingual-shared-tokenizer-v1",
+      "revision": "d23233a4bb237dcc3b1660e46a42f9189eaf0f6c"
+    },
+    "backbone_corpus": {
+      "repo_id": "syssec-utd/pylingual-shared-backbone-corpus-v3",
+      "revision": "6b71d099fcbfeabbe159dd011e907ae52ab6e4ed"
+    },
+    "adapter_corpus": {
+      "repo_id": "syssec-utd/pylingual-shared-adapter-corpus-v3",
+      "revision": "034cd79e776e9fe04c7f545b33ad30c5783430a2"
+    },
+    "encoded": {
+      "repo_id": "syssec-utd/pylingual-shared-encoded-v3",
+      "revision": "11616fd4db16c5c567c189210702da68b0deb7cb"
+    },
+    "encoded_paths": {
+      "adapter/3.14/statement/train": {
+        "repo_id": "syssec-utd/pylingual-shared-encoded-v3",
+        "revision": "441d2a6536c0486aa00b2c522bbb71e08610d275"
+      },
+      "adapter/3.14/statement/validation": {
+        "repo_id": "syssec-utd/pylingual-shared-encoded-v3",
+        "revision": "441d2a6536c0486aa00b2c522bbb71e08610d275"
+      },
+      "adapter/3.15/statement/train": {
+        "repo_id": "syssec-utd/pylingual-shared-encoded-v3",
+        "revision": "babefb482523d028d3d69e03f2434cec0d7227d4"
+      },
+      "adapter/3.15/statement/validation": {
+        "repo_id": "syssec-utd/pylingual-shared-encoded-v3",
+        "revision": "babefb482523d028d3d69e03f2434cec0d7227d4"
+      }
+    }
+  },
+  "trained_artifacts": {
+    "statement": {
+      "host": "triplesec1-gpu",
+      "hub": {
+        "repo_id": "syssec-utd/pylingual-shared-statement-v3",
+        "revision": "a20bc4d28fe8641df0f90aa3665431368930c329"
+      },
+      "global_step": 386248,
+      "encoded_rows": 13904922,
+      "train_loss": 0.014034523887152412
+    },
+    "mlm": {
+      "host": "triplesec2-gpu",
+      "hub": {
+        "repo_id": "syssec-utd/pylingual-shared-mlm-v3",
+        "revision": "8c726605de57c3e061aed3faf2fc5f63b6066e4e"
+      },
+      "global_step": 332882,
+      "encoded_rows": 4660343,
+      "train_loss": 0.248057745309219
+    },
+    "segmentation": {
+      "host": "triplesec2-gpu",
+      "hub": {
+        "repo_id": "syssec-utd/pylingual-shared-segmentation-v3",
+        "revision": "37cfee8f8e7bc16c4050056ffcdead83f714c7cf"
+      },
+      "global_step": 332882,
+      "encoded_rows": 4660343,
+      "train_loss": 0.0042215045882291555
+    },
+    "lora-3.14": {
+      "host": "triplesec1-gpu",
+      "hub": {
+        "repo_id": "syssec-utd/pylingual-shared-lora-statement-3.14-v3",
+        "revision": "f13fea8d9c03fadd8012ea390c136df1a47f116b"
+      },
+      "optimizer_updates": 388558,
+      "encoded_rows": 13988076,
+      "train_loss": 0.01916340776934684,
+      "validation_loss": 0.007398362271487713
+    },
+    "lora-3.15": {
+      "host": "triplesec2-gpu",
+      "hub": {
+        "repo_id": "syssec-utd/pylingual-shared-lora-statement-3.15-v3",
+        "revision": "a8116900d34435d12146f13e4e81586fe7bd13c6"
+      },
+      "optimizer_updates": 390196,
+      "encoded_rows": 14047032,
+      "train_loss": 0.019013690326343105,
+      "validation_loss": 0.007131857797503471
+    }
+  },
+  "official_report_sha256": "69435108545a84335ac5043a92f8cc529d0562fe61f485f15530050e912faef3",
+  "official_report": {
+    "releases": {
+      "v1": {
+        "tag": "v1.1.0",
+        "versions": {
+          "3.14": {
+            "no_adapter": {
+              "files": 4991,
+              "equal_files": 4137,
+              "file_accuracy": 0.8288920056100981,
+              "code_objects": 65762,
+              "equal_code_objects": 63501,
+              "categories": {
+                "Equal": 4137,
+                "CompileError": 331,
+                "Different": 521,
+                "Error": 1,
+                "Timeout": 1
+              },
+              "seconds": 6758.316,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 4991,
+                "equal_files": 4137,
+                "file_accuracy": 0.8288920056100981,
+                "code_objects": 65762,
+                "equal_code_objects": 63501,
+                "categories": {
+                  "Equal": 4137,
+                  "CompileError": 331,
+                  "Different": 521,
+                  "Error": 1,
+                  "Timeout": 1
+                },
+                "seconds": 6758.316
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            },
+            "statement_adapter": {
+              "files": 4991,
+              "equal_files": 4155,
+              "file_accuracy": 0.8324984972951313,
+              "code_objects": 65768,
+              "equal_code_objects": 63647,
+              "categories": {
+                "Equal": 4155,
+                "CompileError": 356,
+                "Different": 479,
+                "Timeout": 1
+              },
+              "seconds": 7050.701,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 4991,
+                "equal_files": 4155,
+                "file_accuracy": 0.8324984972951313,
+                "code_objects": 65768,
+                "equal_code_objects": 63647,
+                "categories": {
+                  "Equal": 4155,
+                  "CompileError": 356,
+                  "Different": 479,
+                  "Timeout": 1
+                },
+                "seconds": 7050.701
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            },
+            "paired": {
+              "files": 4991,
+              "newly_correct": 38,
+              "regressed": 20,
+              "net": 18,
+              "gain_pp": 0.360649168503306
+            },
+            "categories": {
+              "no_adapter": {
+                "Equal": 4137,
+                "CompileError": 331,
+                "Different": 521,
+                "Error": 1,
+                "Timeout": 1
+              },
+              "statement_adapter": {
+                "Equal": 4155,
+                "CompileError": 356,
+                "Different": 479,
+                "Timeout": 1
+              }
+            }
+          },
+          "3.15": {
+            "no_adapter": {
+              "files": 4991,
+              "equal_files": 4124,
+              "file_accuracy": 0.8262873171709076,
+              "code_objects": 65762,
+              "equal_code_objects": 63388,
+              "categories": {
+                "Equal": 4124,
+                "CompileError": 348,
+                "Different": 517,
+                "Error": 1,
+                "Timeout": 1
+              },
+              "seconds": 6688.005,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 4991,
+                "equal_files": 4124,
+                "file_accuracy": 0.8262873171709076,
+                "code_objects": 65762,
+                "equal_code_objects": 63388,
+                "categories": {
+                  "Equal": 4124,
+                  "CompileError": 348,
+                  "Different": 517,
+                  "Error": 1,
+                  "Timeout": 1
+                },
+                "seconds": 6688.005
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            },
+            "statement_adapter": {
+              "files": 4991,
+              "equal_files": 4139,
+              "file_accuracy": 0.8292927269084351,
+              "code_objects": 65678,
+              "equal_code_objects": 63497,
+              "categories": {
+                "Equal": 4139,
+                "CompileError": 355,
+                "Different": 495,
+                "Error": 1,
+                "Timeout": 1
+              },
+              "seconds": 6936.287,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 4991,
+                "equal_files": 4139,
+                "file_accuracy": 0.8292927269084351,
+                "code_objects": 65678,
+                "equal_code_objects": 63497,
+                "categories": {
+                  "Equal": 4139,
+                  "CompileError": 355,
+                  "Different": 495,
+                  "Error": 1,
+                  "Timeout": 1
+                },
+                "seconds": 6936.287
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            },
+            "paired": {
+              "files": 4991,
+              "newly_correct": 45,
+              "regressed": 30,
+              "net": 15,
+              "gain_pp": 0.30054097375275496
+            },
+            "categories": {
+              "no_adapter": {
+                "Equal": 4124,
+                "CompileError": 348,
+                "Different": 517,
+                "Error": 1,
+                "Timeout": 1
+              },
+              "statement_adapter": {
+                "Equal": 4139,
+                "CompileError": 355,
+                "Different": 495,
+                "Error": 1,
+                "Timeout": 1
+              }
+            }
+          }
+        }
+      },
+      "v2": {
+        "tag": "v2.0.1",
+        "versions": {
+          "3.14": {
+            "no_adapter": {
+              "files": 1915,
+              "equal_files": 711,
+              "file_accuracy": 0.3712793733681462,
+              "code_objects": 45801,
+              "equal_code_objects": 42226,
+              "categories": {
+                "Different": 599,
+                "CompileError": 603,
+                "Equal": 711,
+                "Error": 1,
+                "Timeout": 1
+              },
+              "seconds": 7461.427,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 1915,
+                "equal_files": 711,
+                "file_accuracy": 0.3712793733681462,
+                "code_objects": 45801,
+                "equal_code_objects": 42226,
+                "categories": {
+                  "Different": 599,
+                  "CompileError": 603,
+                  "Equal": 711,
+                  "Error": 1,
+                  "Timeout": 1
+                },
+                "seconds": 7461.427
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            },
+            "statement_adapter": {
+              "files": 1915,
+              "equal_files": 717,
+              "file_accuracy": 0.37441253263707575,
+              "code_objects": 45737,
+              "equal_code_objects": 42312,
+              "categories": {
+                "Different": 562,
+                "CompileError": 635,
+                "Equal": 717,
+                "Timeout": 1
+              },
+              "seconds": 7758.412,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 1915,
+                "equal_files": 717,
+                "file_accuracy": 0.37441253263707575,
+                "code_objects": 45737,
+                "equal_code_objects": 42312,
+                "categories": {
+                  "Different": 562,
+                  "CompileError": 635,
+                  "Equal": 717,
+                  "Timeout": 1
+                },
+                "seconds": 7758.412
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            },
+            "paired": {
+              "files": 1915,
+              "newly_correct": 26,
+              "regressed": 20,
+              "net": 6,
+              "gain_pp": 0.3133159268929504
+            },
+            "categories": {
+              "no_adapter": {
+                "Different": 599,
+                "CompileError": 603,
+                "Equal": 711,
+                "Error": 1,
+                "Timeout": 1
+              },
+              "statement_adapter": {
+                "Different": 562,
+                "CompileError": 635,
+                "Equal": 717,
+                "Timeout": 1
+              }
+            }
+          },
+          "3.15": {
+            "no_adapter": {
+              "files": 2078,
+              "equal_files": 846,
+              "file_accuracy": 0.40712223291626565,
+              "code_objects": 47320,
+              "equal_code_objects": 43581,
+              "categories": {
+                "Different": 607,
+                "CompileError": 623,
+                "Equal": 846,
+                "Error": 1,
+                "Timeout": 1
+              },
+              "seconds": 7527.56,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 2078,
+                "equal_files": 846,
+                "file_accuracy": 0.40712223291626565,
+                "code_objects": 47320,
+                "equal_code_objects": 43581,
+                "categories": {
+                  "Different": 607,
+                  "CompileError": 623,
+                  "Equal": 846,
+                  "Error": 1,
+                  "Timeout": 1
+                },
+                "seconds": 7527.56
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            },
+            "statement_adapter": {
+              "files": 2078,
+              "equal_files": 849,
+              "file_accuracy": 0.40856592877767084,
+              "code_objects": 47175,
+              "equal_code_objects": 43616,
+              "categories": {
+                "Different": 584,
+                "CompileError": 643,
+                "Equal": 849,
+                "Error": 1,
+                "Timeout": 1
+              },
+              "seconds": 7846.427,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 2078,
+                "equal_files": 849,
+                "file_accuracy": 0.40856592877767084,
+                "code_objects": 47175,
+                "equal_code_objects": 43616,
+                "categories": {
+                  "Different": 584,
+                  "CompileError": 643,
+                  "Equal": 849,
+                  "Error": 1,
+                  "Timeout": 1
+                },
+                "seconds": 7846.427
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            },
+            "paired": {
+              "files": 2078,
+              "newly_correct": 27,
+              "regressed": 24,
+              "net": 3,
+              "gain_pp": 0.14436958614051973
+            },
+            "categories": {
+              "no_adapter": {
+                "Different": 607,
+                "CompileError": 623,
+                "Equal": 846,
+                "Error": 1,
+                "Timeout": 1
+              },
+              "statement_adapter": {
+                "Different": 584,
+                "CompileError": 643,
+                "Equal": 849,
+                "Error": 1,
+                "Timeout": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "independent_audit": {
+    "passed": true,
+    "date_utc": "2026-11-05T15:35:52.681017+00:00",
+    "verification_tier": "Tier 2: actual two-host GPU benchmark; independently rehashed artifacts and all fixed official inputs",
+    "git_commit": "d084b91508b57b6030acd6d913b6f5e79cd8417e",
+    "plan_sha256": "091c8e2c8ce51a67e05c2e1bb5468d00f176d0b8d4f9554fcf2c3559b36617e0",
+    "total_evaluations": 27950,
+    "completed_units": 8,
+    "dropped_files": 0,
+    "duplicate_rows": 0,
+    "model_load_errors": 0,
+    "source_overlap": 0,
+    "training_sources": {
+      "tokenizer": {
+        "repo_id": "syssec-utd/pylingual-shared-tokenizer-corpus-v1",
+        "revision": "2dd36151733c372cc7409a77af7066b172ad6e76",
+        "journals": [
+          "accepted.jsonl"
+        ]
+      },
+      "backbone": {
+        "repo_id": "syssec-utd/pylingual-shared-backbone-corpus-v3",
+        "revision": "6b71d099fcbfeabbe159dd011e907ae52ab6e4ed",
+        "journals": [
+          "accepted.jsonl"
+        ]
+      },
+      "adapter": {
+        "repo_id": "syssec-utd/pylingual-shared-adapter-corpus-v3",
+        "revision": "034cd79e776e9fe04c7f545b33ad30c5783430a2",
+        "journals": [
+          "3.14/train/accepted.jsonl",
+          "3.14/validation/accepted.jsonl",
+          "3.15/train/accepted.jsonl",
+          "3.15/validation/accepted.jsonl"
+        ]
+      }
+    },
+    "journals": {
+      "tokenizer/accepted.jsonl": {
+        "files": 100000,
+        "sha256": "99edb23546a80faa709cec92ce72087be688e6e8aa638f1fa12287722b1244aa"
+      },
+      "backbone/accepted.jsonl": {
+        "files": 150000,
+        "sha256": "3d8ee3794cd8c89cc9d774464e0a7de5644acca4badbd735106ca585415e702a"
+      },
+      "adapter/3.14/train/accepted.jsonl": {
+        "files": 150000,
+        "sha256": "b26774f72fbb7ab87d4c2c5512a62773010c524a98387587d406ff48ff805aa8"
+      },
+      "adapter/3.14/validation/accepted.jsonl": {
+        "files": 1000,
+        "sha256": "c5b22505c1cfcb84557b8c09aa837ff36e3df361add039fc9ae889ba52107976"
+      },
+      "adapter/3.15/train/accepted.jsonl": {
+        "files": 150000,
+        "sha256": "f7edf2b40ebc5cbe52660ff68a01ab87bf60529860c9fded7a7e9cbfb1e15929"
+      },
+      "adapter/3.15/validation/accepted.jsonl": {
+        "files": 1000,
+        "sha256": "8a32f4fde90ef90cd42549077b2f96d5124c6c9083ef6ee18bed6dad0cb2f160"
+      }
+    },
+    "pooled_source_identifiers": 1052604,
+    "pooled_source_identifiers_sha256": "71085f398a5e048a944fcb77315ff5534f6a5389d596f60a87b50593217da677",
+    "families": {
+      "statement": "f173e996b3b01e3adbfd177c317ad424f2f6ef0ea4181bb7b4239f8e6a976b32",
+      "segmentation": "08dc3788244861061f8114b37bd876b5d8aa629b7d7749e2eabd42949cbc49d1"
+    },
+    "runtime_source_files": 69,
+    "runtime_manifest_sha256": "ad7a212aa83b876d58462528e7859c7c2a8c1a2d79f2f975a147229d6aa26553",
+    "runtime_sha256": {
+      "pylingual/__init__.py": "57915b3d1e7af62e174efc312125f6b01d24da492ff3be07bf21cf74bba135fd",
+      "pylingual/control_flow_reconstruction/cfg.py": "d51a0f018d70706ac264eaca9b756acc5e7037d3c24f61d32e02ee4f0ea91fa0",
+      "pylingual/control_flow_reconstruction/cft.py": "d1afd9f855dc1902035cc383d05abeeb61a0dfe5a0325bda28e09a3c74385451",
+      "pylingual/control_flow_reconstruction/source.py": "cec9747f13a3445df77824c63f869f84c069137e5f44374745b5bef97a0959ba",
+      "pylingual/control_flow_reconstruction/structure.py": "687c8644323e0f4318e3e40290453a4895fef2c0ba84143e02e652190d2e8bcb",
+      "pylingual/control_flow_reconstruction/templates/Block.py": "b198d8c12cfd6d9d4e108f7915af6f8fa767967e44da8a6246698b45dbaa9386",
+      "pylingual/control_flow_reconstruction/templates/CDG.py": "63d54587387a828c7a1368337e9ffcd74101d8acf05d229ceb9cc93594187925",
+      "pylingual/control_flow_reconstruction/templates/Conditional.py": "e3bf05fb871bd3ac230cae4ba12fb43d61ad0e94161889972c22e6f906191de4",
+      "pylingual/control_flow_reconstruction/templates/Exception.py": "05e8e6acdb96d84bdf1481bca1d32286cca63d56b144914b6db8f2515c2a50cd",
+      "pylingual/control_flow_reconstruction/templates/Generator.py": "5ac9026ba7d9a2e4d810e56ca51efb5478398c701d651aa5a853a5a7df3fd05a",
+      "pylingual/control_flow_reconstruction/templates/Loop.py": "14e57ebe74f762376210d33a737fdd95178367b986d5ca64d58a65fef51c219f",
+      "pylingual/control_flow_reconstruction/templates/Match.py": "8be081b2c06b7f34309ddfc385294e39baeb101ba6d310a9c4f32d258b8e8b3f",
+      "pylingual/control_flow_reconstruction/templates/With.py": "cdbeb3e7e9ee7807e2862685a6f894b548c83bf2717da8ed9db30799cc72cb4a",
+      "pylingual/control_flow_reconstruction/templates/__init__.py": "9ad2add96ea78822ef8c8a27f288a159851a5e17a182cfbd9f9f3f2926903930",
+      "pylingual/control_flow_reconstruction/utils.py": "9790d2055a3ac8f1c9d3fe2d1384efe36f280b29626329f5b2549643d4360466",
+      "pylingual/decompiler.py": "719d98c8e8b46339fcd7e552fed26c397cbaf0d7ccb6e46b99a0ba66b961be2a",
+      "pylingual/editable_bytecode/EditableBytecode.py": "04037dda71d1096ec0ccd0947e364e0fd912a8d19e56826612f8e3b52695f447",
+      "pylingual/editable_bytecode/Instruction.py": "0eaa9eab81fd11af6ba0eb6394c48cf7e279efa26051fff8929284dbfb7b7f61",
+      "pylingual/editable_bytecode/PYCFile.py": "e7075be60369fe44d038b9487ce6f37a84935cf85e62497b1cb849570bec9a23",
+      "pylingual/editable_bytecode/__init__.py": "4f47ce1f35beea0b086200aca862ce37ea6b8a86ce3847ea474459614caa9f1c",
+      "pylingual/editable_bytecode/bytecode_patches/__init__.py": "4e51c0fe467a310a3a3d6e4a2fddc56e7d95e0ed14daa520c6f80154d901c66f",
+      "pylingual/editable_bytecode/bytecode_patches/fix_indirect_jump.py": "93de6b6b39b75392df7017dbd0efd7d4eee91633067297790bfcc7ac393e4a8a",
+      "pylingual/editable_bytecode/bytecode_patches/fix_unreachable.py": "5f5f291e04b92dd9663b789c623f962dc8c5f3c8b7c7ba5733baa8df1904d10a",
+      "pylingual/editable_bytecode/bytecode_patches/remove_comprehension_get_iter.py": "397edba2bd1a11c39b8d77c6387fe2a1e2f4d57ceb75a1dab2e3abbd537e70bb",
+      "pylingual/editable_bytecode/bytecode_patches/remove_docstrings.py": "3903c7b3975689323289d240ef87f39910d3af81182b47307ddbd1f044228917",
+      "pylingual/editable_bytecode/bytecode_patches/remove_extended_arg.py": "3b2d1de0f01638acf0051494f8296c2ea54950ba8fe04baf75204bb1892618b3",
+      "pylingual/editable_bytecode/bytecode_patches/remove_nop.py": "8b48eddaa4d9fcb81b35d2f9d3385c89b83918c16a9c7c6f548d036a6b0138d6",
+      "pylingual/editable_bytecode/bytecode_patches/replace_borrow.py": "1cba5a3c5c5e92a2cb2dcb8419bc780748c101a7dcda1abd1631332cdc836326",
+      "pylingual/editable_bytecode/bytecode_patches/replace_firstlno.py": "043f4ed1b5e0a52a81a8ef98a192a21225bc177072becc7ec1620c14ac695d0f",
+      "pylingual/editable_bytecode/bytecode_patches/split_loads.py": "b224485066a7d82c978bb3233b3b65ab4a5c8d23153f1d89b61800ff97122f1c",
+      "pylingual/editable_bytecode/control_flow_graph.py": "42516f4b1e92fd06ca31aeeb6889cbd767287dce211bc72beba940e69eb440af",
+      "pylingual/editable_bytecode/utils.py": "f3181fd9cdb1e61d517e54895cfaf1bf44de31b787f268556f139b4a16f87276",
+      "pylingual/embedding_updates.py": "9184fc0fffc9e8611d57bbe1c4d2dbfaed2f6945b73135fcf0d04f7d659f4a82",
+      "pylingual/equivalence_check.py": "32c3ee458dea8e8f0ae5e4200b73837c44760f2ebe964a2594f1bff29540cbd8",
+      "pylingual/lora.py": "68fdaa3ed58266e50fa65e71b29d955ed0c1b8148fcd1ad10e04b96c41952841",
+      "pylingual/main.py": "f35c15b08910e9f31a57f815fc95ea6e62d13f26f3726ddc1611c433a049d2fc",
+      "pylingual/masking/ast_masker.py": "7226523105002063f727ffff8849618dafb8b60297f3dca5dac6225c075747bd",
+      "pylingual/masking/global_masker.py": "3ac00273084e86d0cd70bd41cb3947b99554df398edab9893cd6ec5b3e0e2b8d",
+      "pylingual/masking/model_disasm.py": "ec6312295b6d3ab25537a1957d2d19146fc91e21b2826b44125aef64d72c67cc",
+      "pylingual/models.py": "addd5bd52e51cf7281cb76fa80dac9ffb3c97d30fa2b06abc642aebf4c8db346",
+      "pylingual/opcode_segmenter.py": "cf6171812b04b6c784e1023ff19e2d2ee7594fe0d0f6a64ac809e8da04fbb9c5",
+      "pylingual/opcodes.py": "33c1ce0fa0d04e54f9a60962842c74369062766b64f667a6690ab2023f24b614",
+      "pylingual/preprocessor/__init__.py": "05e85f1f14218a3ab80e9f39baa986458171c03ccaeaebaa27dbcdc226736377",
+      "pylingual/preprocessor/container_recovery/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "pylingual/preprocessor/container_recovery/recovery.py": "e9fc111c8e070314b453b2dc98c8a3404385b655bba65879f42cb559cdb02d7d",
+      "pylingual/preprocessor/container_recovery/segment.py": "6242faac21f74ee097db6f83d0dd4ef316060acbe684f8db730578f3ff000b4b",
+      "pylingual/preprocessor/container_recovery/stack_analysis.py": "9ef117150eda248fb970ce624e58841e65aa0603949f7bc1841a8c5a0cf80c84",
+      "pylingual/preprocessor/container_recovery/strategies/__init__.py": "8e7006d521c159465efb1202442bddb589c8ddcb10ea3a1a77a6d1661fc47781",
+      "pylingual/preprocessor/container_recovery/strategies/const.py": "4d4b0fd88c729ee92089fb9bb6a4e2287e7c6d3f1dacedca7ad17ec59685d95b",
+      "pylingual/preprocessor/container_recovery/strategies/dict.py": "b6168fafd88015a7515fac79114925ea4dda1a51592e929dc25bcedd86c9670e",
+      "pylingual/preprocessor/container_recovery/strategies/list.py": "9c2bc527f8d849b9dca73260b9770d8cd58bdd27cacc7eaf19c50e7cec01bdd0",
+      "pylingual/preprocessor/container_recovery/strategies/set.py": "cd1aa0cd880d7ed40a7a3b243b5939de20d38ddca31dba42e1f28519c558442d",
+      "pylingual/preprocessor/container_recovery/strategies/tuple.py": "96c7cc6ceb3f9ef3f1efe776670c8f5830eb34d338404ab4813c3f1ea6372349",
+      "pylingual/preprocessor/container_recovery/utils.py": "43da4e2bce85011874f99847939e7a68ad9a7b47fea79319dae6b63dd61e8a1d",
+      "pylingual/preprocessor/preprocessor.py": "0ed39a3ec088ea32364bb8802bf5e10d741f6a0d06e3c0e0579fb2a4e5c50bad",
+      "pylingual/segmentation/segmentation_search_strategies.py": "ea3515a18c1e0059c28f518fcfb3ba333690f3a94821833df9eab81d788b9d87",
+      "pylingual/segmentation/sliding_window.py": "d476b0a49c4186a52d82c0399d73fbc020d463a348973c73147ee725ba574cb4",
+      "pylingual/shared_models.py": "439d4698b2542bf12f6be736d69105abc774881226a09578f1d0b63c8e91af91",
+      "pylingual/utils/ascii_art.py": "c5589b90281bdf6384f4676a8aeedf25f5bbc441b3392942c4e41673331fb0fa",
+      "pylingual/utils/generate_bytecode.py": "cd8294cd4303fe69404dbec23d7236541492227808128aeda468b34d0728aff2",
+      "pylingual/utils/get_logger.py": "18146726fe96e6bbdde2f5a8ac77a2135d3d8edde6022f80a1ae6a06374b85d3",
+      "pylingual/utils/lazy.py": "e548cd9e95ea8b9a833b6d5355b57ef5aeb4d160ea3bdb11c01a6dd3f5d87019",
+      "pylingual/utils/lists.py": "77d1a52f7df02dce22bc2f432fede92c55ddd4737b6fe3b9fed8e69bac27d1e5",
+      "pylingual/utils/tracked_list.py": "b13b68cffba5cc2bd584ceb946100354fb5dd8502a0a37e7960753ec94b21386",
+      "pylingual/utils/use_escape_sequences.py": "a23fd2abc9be55c0cf5ed84c1a12a2d74468a6b98ffc8e19039810a6826ea2ae",
+      "pylingual/utils/version.py": "3a19000cefdc7d04d0a919c0d5d7ff92a7dd068ad35aec7ffc436f324f42044e",
+      "dev_scripts/benchmark_shared_v1.py": "82c23fd295d1918e110ecc0fd1a634378efcc065eb0c085de604b395369e6267",
+      "dev_scripts/evaluate_shared.py": "95686e99c8eecf0d1a77388e875c90126c250e6991189e8e9f7afb46ec1562b6",
+      "dev_scripts/benchmark_full_retrain.py": "ab9b293f6e03f5655fe197c13dd60cd84b0cbb619c538f9d5ae18712a5e47140"
+    },
+    "host_audits": {
+      "triplesec1-gpu": {
+        "passed": true,
+        "date_utc": "2026-11-05T15:33:01.090044+00:00",
+        "version": "3.14",
+        "completed_utc": "2026-11-05T14:27:59.664360+00:00",
+        "git_commit": "d084b91508b57b6030acd6d913b6f5e79cd8417e",
+        "inventory_sha256": "bf600608b5c98494a70f8a74947d28c8f74fe0177f4c2844e626c5eaaf5d4d17",
+        "verified_inventory_files": 18,
+        "families": {
+          "statement": "f173e996b3b01e3adbfd177c317ad424f2f6ef0ea4181bb7b4239f8e6a976b32",
+          "segmentation": "08dc3788244861061f8114b37bd876b5d8aa629b7d7749e2eabd42949cbc49d1"
+        },
+        "runtime_source_files": 69,
+        "runtime_manifest_sha256": "ad7a212aa83b876d58462528e7859c7c2a8c1a2d79f2f975a147229d6aa26553",
+        "runner_sha256": "7966e146e43e4f88a1dac84c7068018c706b6523314b0e742b777478a2165fff",
+        "compilers": {
+          "3.14": {
+            "version": "Python 3.14.6",
+            "magic": "2b0e0d0a",
+            "binary_sha256": "c2afa8cc3c59d32bac482c122633a352c3910bfed85b59efd8ef49511d46bd2b"
+          },
+          "3.15": {
+            "version": "Python 3.15.0b2",
+            "magic": "520e0d0a",
+            "binary_sha256": "e5c157007a6e3937e5a50da258ec434e3eaafef1a1b015559736960085e6d7de"
+          }
+        },
+        "read_only_eval_and_compilers_reused": true,
+        "releases": {
+          "v1": {
+            "tag": "v1.1.0",
+            "commit": "a60d3b95748283ba0fbcd5e94da307d5bd5df870",
+            "files": 4991,
+            "listing_sha256": "4fd3efad5ae20842976451b445c80814bae6f4e82b4b08dfc2ed768f1a534d8b",
+            "official_files_sha256": "12e817209dc2e9109632f99a63e2dbdefd57e612aadef565051b29658d5798d7"
+          },
+          "v2": {
+            "tag": "v2.0.1",
+            "commit": "258bc0380f7c8550fa28f294b896cf168a5e4055",
+            "files": 1915,
+            "listing_sha256": "0623ca9f29b931f153fb0089f1cc02f4b705d55fe50bd4d6d8579b51cda623a1",
+            "official_files_sha256": "108d1e672fe497fd4baf8f176aaca09c4877c33b93ab6ba578285a4fc168d0fe"
+          }
+        },
+        "units": {
+          "v1/no_adapter/3.14": {
+            "file_results_sha256": "b38d075e7819ed5b8919a6516aa44572da66fe9971e825c8f8b906b8910c4dad",
+            "selection_sha256": "e869de8fec03357f2e9201ec5e8a1a4f3d56877af3d3a8b98bd02916d118e695",
+            "provenance_sha256": "0f81156d8a69e6b165c2c6a3df20440aecf47b25c3d340af5ddb51eae4b6e258",
+            "complete_sha256": "5465d0c37427483dd661f5e800bdc510aea4005e23e5d240775bc480582f1f07"
+          },
+          "v1/statement_adapter/3.14": {
+            "file_results_sha256": "fe7a2f0b2e04e181ec27f4489ea9ba3d20c679e5223d4d1e4cad5e7e24381ef7",
+            "selection_sha256": "e869de8fec03357f2e9201ec5e8a1a4f3d56877af3d3a8b98bd02916d118e695",
+            "provenance_sha256": "8a925e6243edcb3ce13ed3001ec36080fe7e6066ac5eff7db5274de3a19114ea",
+            "complete_sha256": "5465d0c37427483dd661f5e800bdc510aea4005e23e5d240775bc480582f1f07"
+          },
+          "v2/no_adapter/3.14": {
+            "file_results_sha256": "309b20eb17275a4a8b6598094b0ec15f65ea5b176719730041a375e03a451982",
+            "selection_sha256": "7c75d64c933184a316f88230c1eb20d7677b1ab07f73acba066a9cb7ce545dd9",
+            "provenance_sha256": "3a7bf52779c6f0aa72afcf9845ca0c231ef0a6db10efd8491196f9ce4bcc1b0c",
+            "complete_sha256": "356ade651cbcebe392bb0543d87310f8de5e88f9becaad1edc3f2bd0070e56c3"
+          },
+          "v2/statement_adapter/3.14": {
+            "file_results_sha256": "ba403241d794e6cdbd7768bb0eed6586b1efe9b2736b2a58f0fbaec33588c07c",
+            "selection_sha256": "7c75d64c933184a316f88230c1eb20d7677b1ab07f73acba066a9cb7ce545dd9",
+            "provenance_sha256": "7263c17bbdc36eff6abaac3aad8806b6b1c43d656daba2082416fd24640ead47",
+            "complete_sha256": "356ade651cbcebe392bb0543d87310f8de5e88f9becaad1edc3f2bd0070e56c3"
+          }
+        }
+      },
+      "triplesec2-gpu": {
+        "passed": true,
+        "date_utc": "2026-11-05T15:33:01.024370+00:00",
+        "version": "3.15",
+        "completed_utc": "2026-11-05T14:27:32.268768+00:00",
+        "git_commit": "d084b91508b57b6030acd6d913b6f5e79cd8417e",
+        "inventory_sha256": "bf600608b5c98494a70f8a74947d28c8f74fe0177f4c2844e626c5eaaf5d4d17",
+        "verified_inventory_files": 18,
+        "families": {
+          "statement": "f173e996b3b01e3adbfd177c317ad424f2f6ef0ea4181bb7b4239f8e6a976b32",
+          "segmentation": "08dc3788244861061f8114b37bd876b5d8aa629b7d7749e2eabd42949cbc49d1"
+        },
+        "runtime_source_files": 69,
+        "runtime_manifest_sha256": "ad7a212aa83b876d58462528e7859c7c2a8c1a2d79f2f975a147229d6aa26553",
+        "runner_sha256": "7966e146e43e4f88a1dac84c7068018c706b6523314b0e742b777478a2165fff",
+        "compilers": {
+          "3.14": {
+            "version": "Python 3.14.6",
+            "magic": "2b0e0d0a",
+            "binary_sha256": "c2afa8cc3c59d32bac482c122633a352c3910bfed85b59efd8ef49511d46bd2b"
+          },
+          "3.15": {
+            "version": "Python 3.15.0b2",
+            "magic": "520e0d0a",
+            "binary_sha256": "e5c157007a6e3937e5a50da258ec434e3eaafef1a1b015559736960085e6d7de"
+          }
+        },
+        "read_only_eval_and_compilers_reused": true,
+        "releases": {
+          "v1": {
+            "tag": "v1.1.0",
+            "commit": "a60d3b95748283ba0fbcd5e94da307d5bd5df870",
+            "files": 4991,
+            "listing_sha256": "bc8c5ce9429356a61791ebc60696e0e6f7f2b49510150807b8f43acfbd18828f",
+            "official_files_sha256": "2bd87e25a4abc9504cd69bcd9976a82a47ad151d6cc51e920875aefa99a831dd"
+          },
+          "v2": {
+            "tag": "v2.0.1",
+            "commit": "258bc0380f7c8550fa28f294b896cf168a5e4055",
+            "files": 2078,
+            "listing_sha256": "731002dde6d166c38cfa1355cc3d150463aa9449060e335450d493ad578c9d06",
+            "official_files_sha256": "94aeaede9645f89a9a5ba6eb0b52bce4cccaa92c7a2335a2825d5a2b28b29c1a"
+          }
+        },
+        "units": {
+          "v1/no_adapter/3.15": {
+            "file_results_sha256": "ce52ed4b6d3b7f4b30d9134975bb730abf86ac876d04f15075be33dec1dfcacf",
+            "selection_sha256": "1b33870e0b7afc652d6eb5e1292c32c06c22bdac1e1979bdcca97ef683e7c032",
+            "provenance_sha256": "267162535196a8117610a88a4c81e42e7468ebfaf1e4fdf606e471a07606e4e7",
+            "complete_sha256": "5465d0c37427483dd661f5e800bdc510aea4005e23e5d240775bc480582f1f07"
+          },
+          "v1/statement_adapter/3.15": {
+            "file_results_sha256": "91f1df971173c9efdefaa21642694e1787724811862fb7f44a3af6afc17a56f2",
+            "selection_sha256": "1b33870e0b7afc652d6eb5e1292c32c06c22bdac1e1979bdcca97ef683e7c032",
+            "provenance_sha256": "ec1fa2524edf55b32f326337c03dfac591abc3192b8d2e16a2a87b728684e133",
+            "complete_sha256": "5465d0c37427483dd661f5e800bdc510aea4005e23e5d240775bc480582f1f07"
+          },
+          "v2/no_adapter/3.15": {
+            "file_results_sha256": "61af8f563db1bfb8defef9ec5e5917d99b6e81399fcabe91162b5b20fd4cd706",
+            "selection_sha256": "8165479a76b8010a20cfca456919cbbd369e3406435e33c3f2e3ada5a46053e4",
+            "provenance_sha256": "7166e03b68496f2018c7a0ddf5a8bdbff0a596272d5e722cc9094e567ffd5001",
+            "complete_sha256": "70d5ed418c5a65f2b93c18b90db8bb16fdadfb081128e791fdc34d6369cd5159"
+          },
+          "v2/statement_adapter/3.15": {
+            "file_results_sha256": "9c831165bb5d425811b3efce39556c9f625eeb87bee82e69bd54075dd5b07ded",
+            "selection_sha256": "8165479a76b8010a20cfca456919cbbd369e3406435e33c3f2e3ada5a46053e4",
+            "provenance_sha256": "831cbc89cbd780444b11f91a1aa29172f6f6665bd7ed72286d11eab77c6ce760",
+            "complete_sha256": "70d5ed418c5a65f2b93c18b90db8bb16fdadfb081128e791fdc34d6369cd5159"
+          }
+        }
+      }
+    },
+    "units": {
+      "v1/no_adapter/3.14": {
+        "files": 4991,
+        "equal_files": 4137,
+        "file_accuracy": 0.8288920056100981,
+        "categories": {
+          "Equal": 4137,
+          "CompileError": 331,
+          "Different": 521,
+          "Error": 1,
+          "Timeout": 1
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "b38d075e7819ed5b8919a6516aa44572da66fe9971e825c8f8b906b8910c4dad"
+      },
+      "v1/statement_adapter/3.14": {
+        "files": 4991,
+        "equal_files": 4155,
+        "file_accuracy": 0.8324984972951313,
+        "categories": {
+          "Equal": 4155,
+          "CompileError": 356,
+          "Different": 479,
+          "Timeout": 1
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "fe7a2f0b2e04e181ec27f4489ea9ba3d20c679e5223d4d1e4cad5e7e24381ef7"
+      },
+      "v2/no_adapter/3.14": {
+        "files": 1915,
+        "equal_files": 711,
+        "file_accuracy": 0.3712793733681462,
+        "categories": {
+          "Different": 599,
+          "CompileError": 603,
+          "Equal": 711,
+          "Error": 1,
+          "Timeout": 1
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "309b20eb17275a4a8b6598094b0ec15f65ea5b176719730041a375e03a451982"
+      },
+      "v2/statement_adapter/3.14": {
+        "files": 1915,
+        "equal_files": 717,
+        "file_accuracy": 0.37441253263707575,
+        "categories": {
+          "Different": 562,
+          "CompileError": 635,
+          "Equal": 717,
+          "Timeout": 1
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "ba403241d794e6cdbd7768bb0eed6586b1efe9b2736b2a58f0fbaec33588c07c"
+      },
+      "v1/no_adapter/3.15": {
+        "files": 4991,
+        "equal_files": 4124,
+        "file_accuracy": 0.8262873171709076,
+        "categories": {
+          "Equal": 4124,
+          "CompileError": 348,
+          "Different": 517,
+          "Error": 1,
+          "Timeout": 1
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "ce52ed4b6d3b7f4b30d9134975bb730abf86ac876d04f15075be33dec1dfcacf"
+      },
+      "v1/statement_adapter/3.15": {
+        "files": 4991,
+        "equal_files": 4139,
+        "file_accuracy": 0.8292927269084351,
+        "categories": {
+          "Equal": 4139,
+          "CompileError": 355,
+          "Different": 495,
+          "Error": 1,
+          "Timeout": 1
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "91f1df971173c9efdefaa21642694e1787724811862fb7f44a3af6afc17a56f2"
+      },
+      "v2/no_adapter/3.15": {
+        "files": 2078,
+        "equal_files": 846,
+        "file_accuracy": 0.40712223291626565,
+        "categories": {
+          "Different": 607,
+          "CompileError": 623,
+          "Equal": 846,
+          "Error": 1,
+          "Timeout": 1
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "61af8f563db1bfb8defef9ec5e5917d99b6e81399fcabe91162b5b20fd4cd706"
+      },
+      "v2/statement_adapter/3.15": {
+        "files": 2078,
+        "equal_files": 849,
+        "file_accuracy": 0.40856592877767084,
+        "categories": {
+          "Different": 584,
+          "CompileError": 643,
+          "Equal": 849,
+          "Error": 1,
+          "Timeout": 1
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "9c831165bb5d425811b3efce39556c9f625eeb87bee82e69bd54075dd5b07ded"
+      }
+    },
+    "paired": {
+      "v1/3.14": {
+        "files": 4991,
+        "newly_correct": 38,
+        "regressed": 20,
+        "net": 18,
+        "gain_pp": 0.360649168503306,
+        "prior_v1_no_adapter_equal": 4009,
+        "prior_v1_statement_adapter_equal": 4064
+      },
+      "v1/3.15": {
+        "files": 4991,
+        "newly_correct": 45,
+        "regressed": 30,
+        "net": 15,
+        "gain_pp": 0.30054097375275496,
+        "prior_v1_no_adapter_equal": 3259,
+        "prior_v1_statement_adapter_equal": 3816
+      },
+      "v2/3.14": {
+        "files": 1915,
+        "newly_correct": 26,
+        "regressed": 20,
+        "net": 6,
+        "gain_pp": 0.3133159268929504,
+        "prior_v1_no_adapter_equal": 630,
+        "prior_v1_statement_adapter_equal": 656
+      },
+      "v2/3.15": {
+        "files": 2078,
+        "newly_correct": 27,
+        "regressed": 24,
+        "net": 3,
+        "gain_pp": 0.14436958614051973,
+        "prior_v1_no_adapter_equal": 485,
+        "prior_v1_statement_adapter_equal": 692
+      }
+    },
+    "error_and_timeout_cases": [
+      {
+        "unit": "v1/no_adapter/3.14",
+        "category": "Error",
+        "relative": "python-3.14/7bdf309e71ee3ed54fa015e44113381cbd1ec9841e116aafb33c155fef6889579e4a528fbd46e838ee27e240fd9f4e00e3ab2b0fc8af5d4fc32ccacaba161233/model_server.pyc",
+        "source_sha512": "7bdf309e71ee3ed54fa015e44113381cbd1ec9841e116aafb33c155fef6889579e4a528fbd46e838ee27e240fd9f4e00e3ab2b0fc8af5d4fc32ccacaba161233",
+        "error": "AssertionError: "
+      },
+      {
+        "unit": "v1/no_adapter/3.14",
+        "category": "Timeout",
+        "relative": "python-3.14/a8f152dddc1ef8fba9ff484b40a27e554fa3830f34e87eef3fda3f057356a9e55e334c92539cee8df19c3ebf8ed67a23e3ed73549a8ffb824bf039a0764dfdc2/_models_py3.pyc",
+        "source_sha512": "a8f152dddc1ef8fba9ff484b40a27e554fa3830f34e87eef3fda3f057356a9e55e334c92539cee8df19c3ebf8ed67a23e3ed73549a8ffb824bf039a0764dfdc2",
+        "error": "TimeoutError: Decompilation of _models_py3.pyc timed out after 300 seconds"
+      },
+      {
+        "unit": "v1/statement_adapter/3.14",
+        "category": "Timeout",
+        "relative": "python-3.14/a8f152dddc1ef8fba9ff484b40a27e554fa3830f34e87eef3fda3f057356a9e55e334c92539cee8df19c3ebf8ed67a23e3ed73549a8ffb824bf039a0764dfdc2/_models_py3.pyc",
+        "source_sha512": "a8f152dddc1ef8fba9ff484b40a27e554fa3830f34e87eef3fda3f057356a9e55e334c92539cee8df19c3ebf8ed67a23e3ed73549a8ffb824bf039a0764dfdc2",
+        "error": "TimeoutError: File-level evaluation wall-clock limit exceeded"
+      },
+      {
+        "unit": "v2/no_adapter/3.14",
+        "category": "Error",
+        "relative": "python-3.14/7bdf309e71ee3ed54fa015e44113381cbd1ec9841e116aafb33c155fef6889579e4a528fbd46e838ee27e240fd9f4e00e3ab2b0fc8af5d4fc32ccacaba161233/model_server.pyc",
+        "source_sha512": "7bdf309e71ee3ed54fa015e44113381cbd1ec9841e116aafb33c155fef6889579e4a528fbd46e838ee27e240fd9f4e00e3ab2b0fc8af5d4fc32ccacaba161233",
+        "error": "AssertionError: "
+      },
+      {
+        "unit": "v2/no_adapter/3.14",
+        "category": "Timeout",
+        "relative": "python-3.14/a8f152dddc1ef8fba9ff484b40a27e554fa3830f34e87eef3fda3f057356a9e55e334c92539cee8df19c3ebf8ed67a23e3ed73549a8ffb824bf039a0764dfdc2/_models_py3.pyc",
+        "source_sha512": "a8f152dddc1ef8fba9ff484b40a27e554fa3830f34e87eef3fda3f057356a9e55e334c92539cee8df19c3ebf8ed67a23e3ed73549a8ffb824bf039a0764dfdc2",
+        "error": "TimeoutError: Decompilation of _models_py3.pyc timed out after 300 seconds"
+      },
+      {
+        "unit": "v2/statement_adapter/3.14",
+        "category": "Timeout",
+        "relative": "python-3.14/a8f152dddc1ef8fba9ff484b40a27e554fa3830f34e87eef3fda3f057356a9e55e334c92539cee8df19c3ebf8ed67a23e3ed73549a8ffb824bf039a0764dfdc2/_models_py3.pyc",
+        "source_sha512": "a8f152dddc1ef8fba9ff484b40a27e554fa3830f34e87eef3fda3f057356a9e55e334c92539cee8df19c3ebf8ed67a23e3ed73549a8ffb824bf039a0764dfdc2",
+        "error": "TimeoutError: Decompilation of _models_py3.pyc timed out after 300 seconds"
+      },
+      {
+        "unit": "v1/no_adapter/3.15",
+        "category": "Error",
+        "relative": "python-3.15/7bdf309e71ee3ed54fa015e44113381cbd1ec9841e116aafb33c155fef6889579e4a528fbd46e838ee27e240fd9f4e00e3ab2b0fc8af5d4fc32ccacaba161233/model_server.pyc",
+        "source_sha512": "7bdf309e71ee3ed54fa015e44113381cbd1ec9841e116aafb33c155fef6889579e4a528fbd46e838ee27e240fd9f4e00e3ab2b0fc8af5d4fc32ccacaba161233",
+        "error": "AssertionError: "
+      },
+      {
+        "unit": "v1/no_adapter/3.15",
+        "category": "Timeout",
+        "relative": "python-3.15/a8f152dddc1ef8fba9ff484b40a27e554fa3830f34e87eef3fda3f057356a9e55e334c92539cee8df19c3ebf8ed67a23e3ed73549a8ffb824bf039a0764dfdc2/_models_py3.pyc",
+        "source_sha512": "a8f152dddc1ef8fba9ff484b40a27e554fa3830f34e87eef3fda3f057356a9e55e334c92539cee8df19c3ebf8ed67a23e3ed73549a8ffb824bf039a0764dfdc2",
+        "error": "TimeoutError: File-level evaluation wall-clock limit exceeded"
+      },
+      {
+        "unit": "v1/statement_adapter/3.15",
+        "category": "Error",
+        "relative": "python-3.15/7bdf309e71ee3ed54fa015e44113381cbd1ec9841e116aafb33c155fef6889579e4a528fbd46e838ee27e240fd9f4e00e3ab2b0fc8af5d4fc32ccacaba161233/model_server.pyc",
+        "source_sha512": "7bdf309e71ee3ed54fa015e44113381cbd1ec9841e116aafb33c155fef6889579e4a528fbd46e838ee27e240fd9f4e00e3ab2b0fc8af5d4fc32ccacaba161233",
+        "error": "AssertionError: "
+      },
+      {
+        "unit": "v1/statement_adapter/3.15",
+        "category": "Timeout",
+        "relative": "python-3.15/a8f152dddc1ef8fba9ff484b40a27e554fa3830f34e87eef3fda3f057356a9e55e334c92539cee8df19c3ebf8ed67a23e3ed73549a8ffb824bf039a0764dfdc2/_models_py3.pyc",
+        "source_sha512": "a8f152dddc1ef8fba9ff484b40a27e554fa3830f34e87eef3fda3f057356a9e55e334c92539cee8df19c3ebf8ed67a23e3ed73549a8ffb824bf039a0764dfdc2",
+        "error": "TimeoutError: File-level evaluation wall-clock limit exceeded"
+      },
+      {
+        "unit": "v2/no_adapter/3.15",
+        "category": "Error",
+        "relative": "python-3.15/7bdf309e71ee3ed54fa015e44113381cbd1ec9841e116aafb33c155fef6889579e4a528fbd46e838ee27e240fd9f4e00e3ab2b0fc8af5d4fc32ccacaba161233/model_server.pyc",
+        "source_sha512": "7bdf309e71ee3ed54fa015e44113381cbd1ec9841e116aafb33c155fef6889579e4a528fbd46e838ee27e240fd9f4e00e3ab2b0fc8af5d4fc32ccacaba161233",
+        "error": "AssertionError: "
+      },
+      {
+        "unit": "v2/no_adapter/3.15",
+        "category": "Timeout",
+        "relative": "python-3.15/a8f152dddc1ef8fba9ff484b40a27e554fa3830f34e87eef3fda3f057356a9e55e334c92539cee8df19c3ebf8ed67a23e3ed73549a8ffb824bf039a0764dfdc2/_models_py3.pyc",
+        "source_sha512": "a8f152dddc1ef8fba9ff484b40a27e554fa3830f34e87eef3fda3f057356a9e55e334c92539cee8df19c3ebf8ed67a23e3ed73549a8ffb824bf039a0764dfdc2",
+        "error": "TimeoutError: Decompilation of _models_py3.pyc timed out after 300 seconds"
+      },
+      {
+        "unit": "v2/statement_adapter/3.15",
+        "category": "Error",
+        "relative": "python-3.15/7bdf309e71ee3ed54fa015e44113381cbd1ec9841e116aafb33c155fef6889579e4a528fbd46e838ee27e240fd9f4e00e3ab2b0fc8af5d4fc32ccacaba161233/model_server.pyc",
+        "source_sha512": "7bdf309e71ee3ed54fa015e44113381cbd1ec9841e116aafb33c155fef6889579e4a528fbd46e838ee27e240fd9f4e00e3ab2b0fc8af5d4fc32ccacaba161233",
+        "error": "AssertionError: "
+      },
+      {
+        "unit": "v2/statement_adapter/3.15",
+        "category": "Timeout",
+        "relative": "python-3.15/a8f152dddc1ef8fba9ff484b40a27e554fa3830f34e87eef3fda3f057356a9e55e334c92539cee8df19c3ebf8ed67a23e3ed73549a8ffb824bf039a0764dfdc2/_models_py3.pyc",
+        "source_sha512": "a8f152dddc1ef8fba9ff484b40a27e554fa3830f34e87eef3fda3f057356a9e55e334c92539cee8df19c3ebf8ed67a23e3ed73549a8ffb824bf039a0764dfdc2",
+        "error": "TimeoutError: File-level evaluation wall-clock limit exceeded"
+      }
+    ],
+    "negative_controls_rejected": [
+      "dropped_row",
+      "duplicate_row",
+      "changed_pyc_identity",
+      "fake_success",
+      "model_load_failure",
+      "source_overlap"
+    ],
+    "prior_v1_report_sha256": "55870fed4ca4123a4b2906ddbc4236f32ad9f1628c80192c864c60e6fd0c5fc0",
+    "audit_scripts_sha256": {
+      "audit-final-benchmark.py": "7a29766572ef54f4360ef0eca58046e0adda8149a9c6f6da77835a5fb8dc56a6",
+      "audit-final-benchmark-host.py": "dd63a7879e617a6c43c409a6cc37d2cb333792efcccf4df9f3ce1e9ae65166aa"
+    },
+    "limits": [
+      "Source overlap is raw source membership; canonical equivalence is not rederived from bytecode.",
+      "One training seed; no ordinary per-version controls; no controlled speed comparison.",
+      "Prior v1 used a 50k backbone covering 3.6-3.14 without 3.15; v3 used 150k covering 3.6-3.15. Cross-run differences do not isolate training size or LoRA transfer."
+    ]
+  },
+  "failure_case_groups": [
+    {
+      "category": "Error",
+      "source_sha512": "7bdf309e71ee3ed54fa015e44113381cbd1ec9841e116aafb33c155fef6889579e4a528fbd46e838ee27e240fd9f4e00e3ab2b0fc8af5d4fc32ccacaba161233",
+      "error": "AssertionError: ",
+      "units": [
+        "v1/no_adapter/3.14",
+        "v2/no_adapter/3.14",
+        "v1/no_adapter/3.15",
+        "v1/statement_adapter/3.15",
+        "v2/no_adapter/3.15",
+        "v2/statement_adapter/3.15"
+      ]
+    },
+    {
+      "category": "Timeout",
+      "source_sha512": "a8f152dddc1ef8fba9ff484b40a27e554fa3830f34e87eef3fda3f057356a9e55e334c92539cee8df19c3ebf8ed67a23e3ed73549a8ffb824bf039a0764dfdc2",
+      "error": "TimeoutError: Decompilation of _models_py3.pyc timed out after 300 seconds",
+      "units": [
+        "v1/no_adapter/3.14",
+        "v2/no_adapter/3.14",
+        "v2/statement_adapter/3.14",
+        "v2/no_adapter/3.15"
+      ]
+    },
+    {
+      "category": "Timeout",
+      "source_sha512": "a8f152dddc1ef8fba9ff484b40a27e554fa3830f34e87eef3fda3f057356a9e55e334c92539cee8df19c3ebf8ed67a23e3ed73549a8ffb824bf039a0764dfdc2",
+      "error": "TimeoutError: File-level evaluation wall-clock limit exceeded",
+      "units": [
+        "v1/statement_adapter/3.14",
+        "v1/no_adapter/3.15",
+        "v1/statement_adapter/3.15",
+        "v2/statement_adapter/3.15"
+      ]
+    }
+  ],
+  "prior_v1_comparison": {
+    "v1/3.14": {
+      "files": 4991,
+      "prior_v1_no_adapter_equal": 4009,
+      "prior_v1_statement_adapter_equal": 4064,
+      "current_no_adapter_equal": 4137,
+      "current_statement_adapter_equal": 4155,
+      "no_adapter_change_pp": 2.5646163093568424,
+      "statement_adapter_change_pp": 1.8232819074333801
+    },
+    "v1/3.15": {
+      "files": 4991,
+      "prior_v1_no_adapter_equal": 3259,
+      "prior_v1_statement_adapter_equal": 3816,
+      "current_no_adapter_equal": 4124,
+      "current_statement_adapter_equal": 4139,
+      "no_adapter_change_pp": 17.331196153075535,
+      "statement_adapter_change_pp": 6.471648968142657
+    },
+    "v2/3.14": {
+      "files": 1915,
+      "prior_v1_no_adapter_equal": 630,
+      "prior_v1_statement_adapter_equal": 656,
+      "current_no_adapter_equal": 711,
+      "current_statement_adapter_equal": 717,
+      "no_adapter_change_pp": 4.2297650130548305,
+      "statement_adapter_change_pp": 3.185378590078329
+    },
+    "v2/3.15": {
+      "files": 2078,
+      "prior_v1_no_adapter_equal": 485,
+      "prior_v1_statement_adapter_equal": 692,
+      "current_no_adapter_equal": 846,
+      "current_statement_adapter_equal": 849,
+      "no_adapter_change_pp": 17.37247353224254,
+      "statement_adapter_change_pp": 7.555341674687199
+    }
+  },
+  "prior_v1_comparison_caveat": "Descriptive, not a controlled data-size experiment: prior v1 had a 50k universal backbone covering Python 3.6-3.14 and excluding 3.15; v3 has 150k covering 3.6-3.15. Adapter training budgets and final weights also differ. Only within-v3 paired LoRA toggles isolate one factor.",
+  "artifact_locations": {
+    "local_per_file_backups": "/home/henry/docs/pylingual-experiments/shared-training-v3-150k-20261102/bench-results/hosts",
+    "merged_results": "/home/henry/docs/pylingual-experiments/shared-training-v3-150k-20261102/bench-results/results",
+    "remote_results": "~/pylingual-bench-v3/results",
+    "training_completion_audit": "/home/henry/docs/pylingual-experiments/shared-training-v3-150k-20261102/training-completion-verified-20261105.json"
+  }
+}
