@@ -1,4 +1,6 @@
-"""Benchmark the shared v1 restart on the official eval releases, Python 3.14 and 3.15 files only.
+"""Benchmark shared backbones on the official eval releases; defaults remain Python 3.14/3.15.
+
+Explicit --versions scopes allow base-only evaluation of other trained Python versions.
 
 Models come only from the pinned Hub revisions in the plan's results: the universal statement
 backbone with both statement LoRAs, and the base-only universal segmenter. The two arms differ only
@@ -32,6 +34,7 @@ EVAL_REPO = "https://github.com/syssec-utd/pylingual_eval_dataset"
 RELEASES = {"v1": ("v1.1.0", "a60d3b95748283ba0fbcd5e94da307d5bd5df870"),
             "v2": ("v2.0.1", "258bc0380f7c8550fa28f294b896cf168a5e4055")}
 VERSIONS = ("3.14", "3.15")
+EVAL_VERSIONS = tuple(f"3.{minor}" for minor in range(6, 16))
 ARMS = ("no_adapter", "statement_adapter")
 IDENTITY_KEYS = ("source_sha512", "source_id", "payload_sha512")
 # Must agree between every adapter and the backbone they are merged onto.
@@ -107,7 +110,7 @@ def segmentation_family(root, plan, destination):
     pending.replace(destination)
 
 
-def checkout(root, release):
+def checkout(root, release, versions=VERSIONS):
     tag, commit = RELEASES[release]
     destination = root/"eval"/tag
     if not destination.exists():
@@ -116,7 +119,7 @@ def checkout(root, release):
             shutil.rmtree(pending)
         subprocess.run(["git", "clone", "--quiet", "--depth", "1", "--branch", tag, "--filter=blob:none", "--sparse",
                         EVAL_REPO, str(pending)], check=True)
-        subprocess.run(["git", "-C", str(pending), "sparse-checkout", "set", *("python-"+version for version in VERSIONS)], check=True)
+        subprocess.run(["git", "-C", str(pending), "sparse-checkout", "set", *("python-"+version for version in versions)], check=True)
         pending.replace(destination)
     head = subprocess.run(["git", "-C", str(destination), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
     if head != commit:
@@ -133,7 +136,7 @@ def prepare(args, plan):
     if not (families/"segmentation").exists():
         segmentation_family(root, plan, families/"segmentation")
     for release in RELEASES:
-        checkout(root, release)
+        checkout(root, release, versions=getattr(args, "versions", None) or VERSIONS)
     print(json.dumps({"prepared": str(root), "families": {task: sha(families/task/"family.json") for task in ("statement", "segmentation")}}), flush=True)
 
 
@@ -230,9 +233,9 @@ def report(args):
     lines = ["| Release | Python | Arm | Exact files | % | Non-overlap exact | Non-overlap % |", "|---|---|---|---:|---:|---:|---:|"]
     for release, (tag, _) in RELEASES.items():
         document["releases"][release] = {"tag": tag, "versions": {}}
-        for version in VERSIONS:
+        for version in getattr(args, "versions", None) or VERSIONS:
             entry = {}
-            for arm in ARMS:
+            for arm in getattr(args, "arms", None) or ARMS:
                 output = results/release/arm/version
                 if not (output/"complete.json").exists():
                     continue
@@ -266,7 +269,9 @@ def main():
     parser.add_argument("--limit", type=int, help="unit: smoke-check only the first N listed files (separate output)")
     parser.add_argument("--release", choices=RELEASES)
     parser.add_argument("--arm", choices=ARMS)
-    parser.add_argument("--version", choices=VERSIONS)
+    parser.add_argument("--version", choices=EVAL_VERSIONS)
+    parser.add_argument("--versions", nargs="+", choices=EVAL_VERSIONS, help="prepare/report scope; defaults to 3.14/3.15")
+    parser.add_argument("--arms", nargs="+", choices=ARMS, help="report scope; defaults to both arms")
     parser.add_argument("--timeout", type=int, default=300)
     args = parser.parse_args()
     plan = json.loads(args.plan.read_text())
@@ -279,6 +284,8 @@ def main():
     elif args.command == "unit":
         if not (args.release and args.arm and args.version and args.compilers):
             parser.error("unit needs --release, --arm, --version and --compilers")
+        if args.arm == "statement_adapter" and args.version not in VERSIONS:
+            parser.error("This experiment has statement adapters only for 3.14 and 3.15")
         unit(args, plan)
     else:
         report(args)

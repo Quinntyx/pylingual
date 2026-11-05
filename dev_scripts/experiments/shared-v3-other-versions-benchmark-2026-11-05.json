@@ -1,0 +1,101 @@
+{
+  "approved": true,
+  "approved_at": "2026-11-05",
+  "status": "approved_for_launch",
+  "training_plan": "shared-v3-main-150k-2026-11-02.json",
+  "training_plan_sha256": "0567ed821c5605e850fc3e0be8ff4667d25b2cfc89e888e4125e4121cc1cab63",
+  "prior_results_commit": "197c449d3db8774a06acc70115b4b10990293bee",
+  "tokenizer": {
+    "repo_id": "syssec-utd/pylingual-shared-tokenizer-v1",
+    "revision": "d23233a4bb237dcc3b1660e46a42f9189eaf0f6c"
+  },
+  "models": {
+    "statement": {
+      "repo_id": "syssec-utd/pylingual-shared-statement-v3",
+      "revision": "a20bc4d28fe8641df0f90aa3665431368930c329"
+    },
+    "segmentation": {
+      "repo_id": "syssec-utd/pylingual-shared-segmentation-v3",
+      "revision": "37cfee8f8e7bc16c4050056ffcdead83f714c7cf"
+    }
+  },
+  "versions": [
+    "3.6",
+    "3.7",
+    "3.8",
+    "3.9",
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13"
+  ],
+  "arms": [
+    "no_adapter"
+  ],
+  "total_evaluations": 51144,
+  "expected_files": {
+    "v1": {
+      "3.6": 4780,
+      "3.7": 4949,
+      "3.8": 4987,
+      "3.9": 4987,
+      "3.10": 4991,
+      "3.11": 4991,
+      "3.12": 4962,
+      "3.13": 4962
+    },
+    "v2": {
+      "3.6": 1106,
+      "3.7": 1198,
+      "3.8": 1284,
+      "3.9": 1201,
+      "3.10": 1261,
+      "3.11": 1335,
+      "3.12": 1362,
+      "3.13": 2788
+    }
+  },
+  "eval_releases": {
+    "v1": {
+      "tag": "v1.1.0",
+      "commit": "a60d3b95748283ba0fbcd5e94da307d5bd5df870"
+    },
+    "v2": {
+      "tag": "v2.0.1",
+      "commit": "258bc0380f7c8550fa28f294b896cf168a5e4055"
+    }
+  },
+  "protocol": {
+    "scoring": "strict full-file bytecode equivalence",
+    "precision": "FP32",
+    "timeout_seconds_per_file": 300,
+    "torch_threads": 4,
+    "TORCH_DISABLE_NATIVE_JIT": "1",
+    "keep_all_listed_files": true,
+    "errors_and_timeouts_count_as_failures": true,
+    "statement_adapters": false,
+    "segmentation_adapters": false,
+    "retraining": false,
+    "compiler_location": "existing pinned workstation native interpreters via SSH reverse forwarding"
+  },
+  "lanes": {
+    "triplesec1-gpu": [
+      "3.6",
+      "3.7",
+      "3.8",
+      "3.9"
+    ],
+    "triplesec2-gpu": [
+      "3.10",
+      "3.11",
+      "3.12",
+      "3.13"
+    ]
+  },
+  "storage": {
+    "triplesec1-gpu": "home task root",
+    "triplesec2-gpu": "/dev/shm/pylingual-v3-other-versions",
+    "backups": "workstation other-versions-benchmark/hosts, every scheduled check",
+    "prior_benchmark_inputs_and_results": "read-only; no deletion or replacement"
+  }
+}
