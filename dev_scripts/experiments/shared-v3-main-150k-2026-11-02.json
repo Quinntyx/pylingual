@@ -42,5 +42,25 @@
     "workspace": "/home/henry/docs/pylingual-experiments/shared-training-v3-150k-20261102",
     "remote_data_root": "~/pylingual-v3-data",
     "remote_training_root": "~/pylingual-runs-v3"
+  },
+  "results": {
+    "completed": "2026-11-05T08:32:33Z",
+    "verification": "All five public final revisions and final-step resumable checkpoints independently verified against the hosts; both adapters have the same frozen backbone, tokenizer and opcode registry. No data or training settings changed.",
+    "stages": {
+      "statement": {"host": "triplesec1-gpu", "hub": {"repo_id": "syssec-utd/pylingual-shared-statement-v3", "revision": "a20bc4d28fe8641df0f90aa3665431368930c329"}, "global_step": 386248, "encoded_rows": 13904922, "train_loss": 0.014034523887152412},
+      "mlm": {"host": "triplesec2-gpu", "hub": {"repo_id": "syssec-utd/pylingual-shared-mlm-v3", "revision": "8c726605de57c3e061aed3faf2fc5f63b6066e4e"}, "global_step": 332882, "encoded_rows": 4660343, "train_loss": 0.248057745309219},
+      "segmentation": {"host": "triplesec2-gpu", "hub": {"repo_id": "syssec-utd/pylingual-shared-segmentation-v3", "revision": "37cfee8f8e7bc16c4050056ffcdead83f714c7cf"}, "global_step": 332882, "encoded_rows": 4660343, "train_loss": 0.0042215045882291555},
+      "lora-3.14": {"host": "triplesec1-gpu", "hub": {"repo_id": "syssec-utd/pylingual-shared-lora-statement-3.14-v3", "revision": "f13fea8d9c03fadd8012ea390c136df1a47f116b"}, "optimizer_updates": 388558, "encoded_rows": 13988076, "train_loss": 0.01916340776934684, "validation_loss": 0.007398362271487713},
+      "lora-3.15": {"host": "triplesec2-gpu", "hub": {"repo_id": "syssec-utd/pylingual-shared-lora-statement-3.15-v3", "revision": "a8116900d34435d12146f13e4e81586fe7bd13c6"}, "optimizer_updates": 390196, "encoded_rows": 14047032, "train_loss": 0.019013690326343105, "validation_loss": 0.007131857797503471}
+    }
+  },
+  "benchmark": {
+    "approved": "Same official v1/v2 3.14/3.15 benchmark as the approved v2 plan; user explicitly requested it for v3.",
+    "status": "preparing",
+    "code": "benchmark_shared_v1.py, unchanged scoring and paired no_adapter/statement_adapter arms",
+    "protocol": "strict full-file bytecode equivalence, FP32, 300 s per file, every listed file; compilers 3.14.6 / 3.15.0b2; TORCH_DISABLE_NATIVE_JIT=1",
+    "releases": {"v1": "v1.1.0 (a60d3b95748283ba0fbcd5e94da307d5bd5df870)", "v2": "v2.0.1 (258bc0380f7c8550fa28f294b896cf168a5e4055)"},
+    "remote_root": "~/pylingual-bench-v3",
+    "local_results": "/home/henry/docs/pylingual-experiments/shared-training-v3-150k-20261102/bench-results"
   }
 }
