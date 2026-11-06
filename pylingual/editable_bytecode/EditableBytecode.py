@@ -18,6 +18,12 @@ from .control_flow_graph import bytecode_to_control_flow_graph
 from typing import Callable
 
 
+def _annotation_preamble_signature(instructions):
+    """Compare common constants by opcode index across xdis representations."""
+    # xdis may expose LOAD_COMMON_CONSTANT.argval as the actual Python object
+    # (for example NotImplementedError), rather than its integer table index.
+    return tuple((inst.opname, inst.arg if inst.opname == "LOAD_COMMON_CONSTANT" else inst.argval)
+                 for inst in instructions)
 def _encode_name_arg(opname: str, name_index: int, original_arg: int | None, version: PythonVersion) -> int:
     shifts = {
         "LOAD_GLOBAL": 1 if version >= (3, 11) else 0,
@@ -186,7 +192,7 @@ class EditableBytecode:
         annotate_func_cache = {}
 
         def try_read_annotate_func(codeobj) -> EditableBytecode | None:
-            
+
             if not iscode(codeobj):
                 return None
 
@@ -258,7 +264,7 @@ class EditableBytecode:
 
                     inlinable_insts = (conditional_annotation_map.get(-1) or list()) + [load_classdict] + annotate_bytecode[cursor_idx + 1 : next_cursor_idx]
                 elif "__classdict__" in codeobj.co_freevars:
-                    # direct class annotation whose type expression doesn't start with a __classdict__ lookup 
+                    # direct class annotation whose type expression doesn't start with a __classdict__ lookup
                     annotation_identifier = -1
                     next_cursor_idx = next(idx + 1 for idx in range(cursor_idx, len(annotate_bytecode)) if annotate_bytecode[idx].opname == "STORE_SUBSCR")
                     inlinable_insts = (conditional_annotation_map.get(-1) or list()) + annotate_bytecode[cursor_idx:next_cursor_idx]
@@ -282,6 +288,12 @@ class EditableBytecode:
                     is_jump_target=False,
                     has_extended_arg=False,
                 )
+                # Short-circuit/ternary type expressions can jump directly to COPY 2.
+                # Replacing the list entry alone leaves those jumps pointing at an
+                # instruction which will never be inserted into the parent stream.
+                for inline_inst in inlinable_insts:
+                    if inline_inst.is_jump and inline_inst.target is copy_annotations_inst:
+                        inline_inst._target = load_global_annotations
                 inlinable_insts[-3] = load_global_annotations
 
                 conditional_annotation_map[annotation_identifier] = inlinable_insts
@@ -294,7 +306,7 @@ class EditableBytecode:
             annotate_bytecode = try_read_annotate_func(codeobj)
             if annotate_bytecode is None:
                 return (False, [])
-            
+
             # find the idx after the preamble
             insts = annotate_bytecode.instructions
             # skip the `if format > VALUE_WITH_FAKE_GLOBALS: raise NotImplementedError` guard
@@ -339,7 +351,7 @@ class EditableBytecode:
                 annotate_func = False
                 annotate_codeobj = None
                 is_class = False
-                
+
                 # go to the annotate function
                 for i in range(idx, len(self.instructions)):
                     # check for annotate func remove LOAD_CONST, MAKE_FUNCTION and SET_FUNCTION_ATTRIBUTE afterwards
@@ -400,7 +412,7 @@ class EditableBytecode:
                         extra_removes.update(to_remove)
                     else:
                         extra_removes.update(to_remove)
-                    
+
                     conditional_annotation_map |= class_conditional_annotation_map
 
                     # the class __annotate__ is fully inlined, so drop it from co_consts to keep it from being decompiled on its own
@@ -451,7 +463,7 @@ class EditableBytecode:
             elif inst.opname == "STORE_DEREF" and inst.argval == "__conditional_annotations__" and -1 in conditional_annotation_map:
                 inline_dict[(idx, tuple(self.instructions[idx - 1 : idx + 1]))] = conditional_annotation_map[-1]
                 del conditional_annotation_map[-1]
-       
+
         insert_map = defaultdict(list)
         for (idx, _), insts in inline_dict.items():
             insert_map[idx].extend(insts)
@@ -780,11 +792,13 @@ class EditableBytecode:
         co_consts = tuple((const.to_code(no_lnotab=no_lnotab) if isinstance(const, EditableBytecode) else const) for const in self.co_consts)
 
         replacement_args = {
-            "co_code": self.to_bytecode(), 
-            "co_consts": tuple(co_consts), 
-            "co_names": tuple(self.co_names), 
-            "co_varnames": tuple(self.co_varnames), 
-            "co_nlocals": len(self.co_varnames)
+            "co_code": self.to_bytecode(),
+            "co_consts": tuple(co_consts),
+            "co_names": tuple(self.co_names),
+            "co_varnames": tuple(self.co_varnames),
+            # Annotation inlining can insert locals; native CodeType.replace
+            # requires the local count to match the updated variable table.
+            "co_nlocals": len(self.co_varnames),
         }
 
         # co_lnotab deprecated in python >= 3.10

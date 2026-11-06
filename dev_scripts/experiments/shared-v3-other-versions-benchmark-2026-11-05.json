@@ -1,0 +1,1717 @@
+{
+  "approved": true,
+  "approved_at": "2026-11-05",
+  "status": "complete",
+  "training_plan": "shared-v3-main-150k-2026-11-02.json",
+  "training_plan_sha256": "0567ed821c5605e850fc3e0be8ff4667d25b2cfc89e888e4125e4121cc1cab63",
+  "prior_results_commit": "197c449d3db8774a06acc70115b4b10990293bee",
+  "tokenizer": {
+    "repo_id": "syssec-utd/pylingual-shared-tokenizer-v1",
+    "revision": "d23233a4bb237dcc3b1660e46a42f9189eaf0f6c"
+  },
+  "models": {
+    "statement": {
+      "repo_id": "syssec-utd/pylingual-shared-statement-v3",
+      "revision": "a20bc4d28fe8641df0f90aa3665431368930c329"
+    },
+    "segmentation": {
+      "repo_id": "syssec-utd/pylingual-shared-segmentation-v3",
+      "revision": "37cfee8f8e7bc16c4050056ffcdead83f714c7cf"
+    }
+  },
+  "versions": [
+    "3.6",
+    "3.7",
+    "3.8",
+    "3.9",
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13"
+  ],
+  "arms": [
+    "no_adapter"
+  ],
+  "total_evaluations": 51144,
+  "expected_files": {
+    "v1": {
+      "3.6": 4780,
+      "3.7": 4949,
+      "3.8": 4987,
+      "3.9": 4987,
+      "3.10": 4991,
+      "3.11": 4991,
+      "3.12": 4962,
+      "3.13": 4962
+    },
+    "v2": {
+      "3.6": 1106,
+      "3.7": 1198,
+      "3.8": 1284,
+      "3.9": 1201,
+      "3.10": 1261,
+      "3.11": 1335,
+      "3.12": 1362,
+      "3.13": 2788
+    }
+  },
+  "eval_releases": {
+    "v1": {
+      "tag": "v1.1.0",
+      "commit": "a60d3b95748283ba0fbcd5e94da307d5bd5df870"
+    },
+    "v2": {
+      "tag": "v2.0.1",
+      "commit": "258bc0380f7c8550fa28f294b896cf168a5e4055"
+    }
+  },
+  "protocol": {
+    "scoring": "strict full-file bytecode equivalence",
+    "precision": "FP32",
+    "timeout_seconds_per_file": 300,
+    "torch_threads": 4,
+    "TORCH_DISABLE_NATIVE_JIT": "1",
+    "keep_all_listed_files": true,
+    "errors_and_timeouts_count_as_failures": true,
+    "statement_adapters": false,
+    "segmentation_adapters": false,
+    "retraining": false,
+    "compiler_location": "existing pinned workstation native interpreters via SSH reverse forwarding"
+  },
+  "lanes": {
+    "triplesec1-gpu": [
+      "3.6",
+      "3.7",
+      "3.8",
+      "3.9"
+    ],
+    "triplesec2-gpu": [
+      "3.10",
+      "3.11",
+      "3.12",
+      "3.13"
+    ]
+  },
+  "storage": {
+    "triplesec1-gpu": "home task root",
+    "triplesec2-gpu": "/dev/shm/pylingual-v3-other-versions",
+    "backups": "workstation other-versions-benchmark/hosts, every scheduled check",
+    "prior_benchmark_inputs_and_results": "read-only; no deletion or replacement"
+  },
+  "completed_utc": "2026-11-06T07:14:35.192432+00:00",
+  "source_commit": "84c65f938ee45c6175beb3b9b385c9550f2f0f3a",
+  "official_report": {
+    "releases": {
+      "v1": {
+        "tag": "v1.1.0",
+        "versions": {
+          "3.6": {
+            "no_adapter": {
+              "files": 4780,
+              "equal_files": 4114,
+              "file_accuracy": 0.8606694560669456,
+              "code_objects": 64790,
+              "equal_code_objects": 63125,
+              "categories": {
+                "Equal": 4114,
+                "CompileError": 232,
+                "Different": 434
+              },
+              "seconds": 4173.95,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 4780,
+                "equal_files": 4114,
+                "file_accuracy": 0.8606694560669456,
+                "code_objects": 64790,
+                "equal_code_objects": 63125,
+                "categories": {
+                  "Equal": 4114,
+                  "CompileError": 232,
+                  "Different": 434
+                },
+                "seconds": 4173.95
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            }
+          },
+          "3.7": {
+            "no_adapter": {
+              "files": 4949,
+              "equal_files": 4258,
+              "file_accuracy": 0.8603758335017175,
+              "code_objects": 68223,
+              "equal_code_objects": 66473,
+              "categories": {
+                "Equal": 4258,
+                "CompileError": 257,
+                "Different": 434
+              },
+              "seconds": 4517.667,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 4949,
+                "equal_files": 4258,
+                "file_accuracy": 0.8603758335017175,
+                "code_objects": 68223,
+                "equal_code_objects": 66473,
+                "categories": {
+                  "Equal": 4258,
+                  "CompileError": 257,
+                  "Different": 434
+                },
+                "seconds": 4517.667
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            }
+          },
+          "3.8": {
+            "no_adapter": {
+              "files": 4987,
+              "equal_files": 4286,
+              "file_accuracy": 0.8594345297774213,
+              "code_objects": 69007,
+              "equal_code_objects": 67221,
+              "categories": {
+                "Equal": 4286,
+                "CompileError": 271,
+                "Different": 430
+              },
+              "seconds": 4164.705,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 4987,
+                "equal_files": 4286,
+                "file_accuracy": 0.8594345297774213,
+                "code_objects": 69007,
+                "equal_code_objects": 67221,
+                "categories": {
+                  "Equal": 4286,
+                  "CompileError": 271,
+                  "Different": 430
+                },
+                "seconds": 4164.705
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            }
+          },
+          "3.9": {
+            "no_adapter": {
+              "files": 4987,
+              "equal_files": 4301,
+              "file_accuracy": 0.8624423501102867,
+              "code_objects": 69031,
+              "equal_code_objects": 67224,
+              "categories": {
+                "Equal": 4301,
+                "CompileError": 259,
+                "Different": 427
+              },
+              "seconds": 3974.583,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 4987,
+                "equal_files": 4301,
+                "file_accuracy": 0.8624423501102867,
+                "code_objects": 69031,
+                "equal_code_objects": 67224,
+                "categories": {
+                  "Equal": 4301,
+                  "CompileError": 259,
+                  "Different": 427
+                },
+                "seconds": 3974.583
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            }
+          },
+          "3.10": {
+            "no_adapter": {
+              "files": 4991,
+              "equal_files": 4250,
+              "file_accuracy": 0.851532758966139,
+              "code_objects": 69127,
+              "equal_code_objects": 67148,
+              "categories": {
+                "Equal": 4250,
+                "CompileError": 244,
+                "Different": 497
+              },
+              "seconds": 4088.224,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 4991,
+                "equal_files": 4250,
+                "file_accuracy": 0.851532758966139,
+                "code_objects": 69127,
+                "equal_code_objects": 67148,
+                "categories": {
+                  "Equal": 4250,
+                  "CompileError": 244,
+                  "Different": 497
+                },
+                "seconds": 4088.224
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            }
+          },
+          "3.11": {
+            "no_adapter": {
+              "files": 4991,
+              "equal_files": 4334,
+              "file_accuracy": 0.8683630534962933,
+              "code_objects": 68936,
+              "equal_code_objects": 67290,
+              "categories": {
+                "Equal": 4334,
+                "Different": 355,
+                "CompileError": 302
+              },
+              "seconds": 4066.413,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 4991,
+                "equal_files": 4334,
+                "file_accuracy": 0.8683630534962933,
+                "code_objects": 68936,
+                "equal_code_objects": 67290,
+                "categories": {
+                  "Equal": 4334,
+                  "Different": 355,
+                  "CompileError": 302
+                },
+                "seconds": 4066.413
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            }
+          },
+          "3.12": {
+            "no_adapter": {
+              "files": 4962,
+              "equal_files": 4288,
+              "file_accuracy": 0.864167674324869,
+              "code_objects": 58086,
+              "equal_code_objects": 56542,
+              "categories": {
+                "Equal": 4288,
+                "Different": 365,
+                "CompileError": 308,
+                "Timeout": 1
+              },
+              "seconds": 4424.678,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 4962,
+                "equal_files": 4288,
+                "file_accuracy": 0.864167674324869,
+                "code_objects": 58086,
+                "equal_code_objects": 56542,
+                "categories": {
+                  "Equal": 4288,
+                  "Different": 365,
+                  "CompileError": 308,
+                  "Timeout": 1
+                },
+                "seconds": 4424.678
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            }
+          },
+          "3.13": {
+            "no_adapter": {
+              "files": 4962,
+              "equal_files": 4183,
+              "file_accuracy": 0.8430068520757759,
+              "code_objects": 64153,
+              "equal_code_objects": 62353,
+              "categories": {
+                "Equal": 4183,
+                "Different": 442,
+                "CompileError": 337
+              },
+              "seconds": 4292.817,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 4962,
+                "equal_files": 4183,
+                "file_accuracy": 0.8430068520757759,
+                "code_objects": 64153,
+                "equal_code_objects": 62353,
+                "categories": {
+                  "Equal": 4183,
+                  "Different": 442,
+                  "CompileError": 337
+                },
+                "seconds": 4292.817
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            }
+          }
+        }
+      },
+      "v2": {
+        "tag": "v2.0.1",
+        "versions": {
+          "3.6": {
+            "no_adapter": {
+              "files": 1106,
+              "equal_files": 316,
+              "file_accuracy": 0.2857142857142857,
+              "code_objects": 37315,
+              "equal_code_objects": 35058,
+              "categories": {
+                "Equal": 316,
+                "Different": 439,
+                "CompileError": 351
+              },
+              "seconds": 3480.124,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 1106,
+                "equal_files": 316,
+                "file_accuracy": 0.2857142857142857,
+                "code_objects": 37315,
+                "equal_code_objects": 35058,
+                "categories": {
+                  "Equal": 316,
+                  "Different": 439,
+                  "CompileError": 351
+                },
+                "seconds": 3480.124
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            }
+          },
+          "3.7": {
+            "no_adapter": {
+              "files": 1198,
+              "equal_files": 361,
+              "file_accuracy": 0.3013355592654424,
+              "code_objects": 39692,
+              "equal_code_objects": 37260,
+              "categories": {
+                "Equal": 361,
+                "Different": 450,
+                "CompileError": 387
+              },
+              "seconds": 3619.771,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 1198,
+                "equal_files": 361,
+                "file_accuracy": 0.3013355592654424,
+                "code_objects": 39692,
+                "equal_code_objects": 37260,
+                "categories": {
+                  "Equal": 361,
+                  "Different": 450,
+                  "CompileError": 387
+                },
+                "seconds": 3619.771
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            }
+          },
+          "3.8": {
+            "no_adapter": {
+              "files": 1284,
+              "equal_files": 383,
+              "file_accuracy": 0.2982866043613707,
+              "code_objects": 34932,
+              "equal_code_objects": 32418,
+              "categories": {
+                "Equal": 383,
+                "Different": 465,
+                "CompileError": 436
+              },
+              "seconds": 3369.38,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 1284,
+                "equal_files": 383,
+                "file_accuracy": 0.2982866043613707,
+                "code_objects": 34932,
+                "equal_code_objects": 32418,
+                "categories": {
+                  "Equal": 383,
+                  "Different": 465,
+                  "CompileError": 436
+                },
+                "seconds": 3369.38
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            }
+          },
+          "3.9": {
+            "no_adapter": {
+              "files": 1201,
+              "equal_files": 354,
+              "file_accuracy": 0.29475437135720234,
+              "code_objects": 42781,
+              "equal_code_objects": 40287,
+              "categories": {
+                "Equal": 354,
+                "Different": 460,
+                "CompileError": 387
+              },
+              "seconds": 3486.573,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 1201,
+                "equal_files": 354,
+                "file_accuracy": 0.29475437135720234,
+                "code_objects": 42781,
+                "equal_code_objects": 40287,
+                "categories": {
+                  "Equal": 354,
+                  "Different": 460,
+                  "CompileError": 387
+                },
+                "seconds": 3486.573
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            }
+          },
+          "3.10": {
+            "no_adapter": {
+              "files": 1261,
+              "equal_files": 431,
+              "file_accuracy": 0.34179222839016654,
+              "code_objects": 43332,
+              "equal_code_objects": 40815,
+              "categories": {
+                "Equal": 431,
+                "Different": 457,
+                "CompileError": 373
+              },
+              "seconds": 3457.542,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 1261,
+                "equal_files": 431,
+                "file_accuracy": 0.34179222839016654,
+                "code_objects": 43332,
+                "equal_code_objects": 40815,
+                "categories": {
+                  "Equal": 431,
+                  "Different": 457,
+                  "CompileError": 373
+                },
+                "seconds": 3457.542
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            }
+          },
+          "3.11": {
+            "no_adapter": {
+              "files": 1335,
+              "equal_files": 406,
+              "file_accuracy": 0.3041198501872659,
+              "code_objects": 41819,
+              "equal_code_objects": 39194,
+              "categories": {
+                "Equal": 406,
+                "Different": 371,
+                "CompileError": 558
+              },
+              "seconds": 3796.822,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 1335,
+                "equal_files": 406,
+                "file_accuracy": 0.3041198501872659,
+                "code_objects": 41819,
+                "equal_code_objects": 39194,
+                "categories": {
+                  "Equal": 406,
+                  "Different": 371,
+                  "CompileError": 558
+                },
+                "seconds": 3796.822
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            }
+          },
+          "3.12": {
+            "no_adapter": {
+              "files": 1362,
+              "equal_files": 489,
+              "file_accuracy": 0.3590308370044053,
+              "code_objects": 33635,
+              "equal_code_objects": 31288,
+              "categories": {
+                "Equal": 489,
+                "Different": 338,
+                "CompileError": 534,
+                "Timeout": 1
+              },
+              "seconds": 3963.192,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 1362,
+                "equal_files": 489,
+                "file_accuracy": 0.3590308370044053,
+                "code_objects": 33635,
+                "equal_code_objects": 31288,
+                "categories": {
+                  "Equal": 489,
+                  "Different": 338,
+                  "CompileError": 534,
+                  "Timeout": 1
+                },
+                "seconds": 3963.192
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            }
+          },
+          "3.13": {
+            "no_adapter": {
+              "files": 2788,
+              "equal_files": 1734,
+              "file_accuracy": 0.6219512195121951,
+              "code_objects": 51522,
+              "equal_code_objects": 48688,
+              "categories": {
+                "Equal": 1734,
+                "Different": 479,
+                "CompileError": 575
+              },
+              "seconds": 4619.536,
+              "known_training_or_validation_source_overlap": 0,
+              "non_overlapping_source_files": {
+                "files": 2788,
+                "equal_files": 1734,
+                "file_accuracy": 0.6219512195121951,
+                "code_objects": 51522,
+                "equal_code_objects": 48688,
+                "categories": {
+                  "Equal": 1734,
+                  "Different": 479,
+                  "CompileError": 575
+                },
+                "seconds": 4619.536
+              },
+              "known_overlapping_source_files": {
+                "files": 0,
+                "equal_files": 0,
+                "file_accuracy": null,
+                "code_objects": 0,
+                "equal_code_objects": 0,
+                "categories": {},
+                "seconds": 0
+              },
+              "coverage_note": "Raw source SHA-512 overlap checked; canonical source equivalence not rederived from bytecode."
+            }
+          }
+        }
+      }
+    }
+  },
+  "official_report_sha256": "035dde9da7545bb6e46a99ebde3f18763e67c9c7c1a3f947c4e38c83f40d2cd7",
+  "independent_audit": {
+    "passed": true,
+    "date_utc": "2026-11-06T07:14:35.192432+00:00",
+    "verification_tier": "Tier 2: two real GPU hosts, native compiler boundary, independent fixed-input and outcome audit",
+    "git_commit": "84c65f938ee45c6175beb3b9b385c9550f2f0f3a",
+    "training_plan_sha256": "0567ed821c5605e850fc3e0be8ff4667d25b2cfc89e888e4125e4121cc1cab63",
+    "manifest_at_launch_sha256": "6729edc61b4c895607f4536b928c5076e524f63ca7dabc2fc268beab09a6dea2",
+    "versions": [
+      "3.6",
+      "3.7",
+      "3.8",
+      "3.9",
+      "3.10",
+      "3.11",
+      "3.12",
+      "3.13"
+    ],
+    "arms": [
+      "no_adapter"
+    ],
+    "total_evaluations": 51144,
+    "completed_units": 16,
+    "dropped_files": 0,
+    "duplicate_rows": 0,
+    "model_load_errors": 0,
+    "source_overlap": 0,
+    "source_journals": {
+      "tokenizer/accepted.jsonl": {
+        "files": 100000,
+        "sha256": "99edb23546a80faa709cec92ce72087be688e6e8aa638f1fa12287722b1244aa"
+      },
+      "backbone/accepted.jsonl": {
+        "files": 150000,
+        "sha256": "3d8ee3794cd8c89cc9d774464e0a7de5644acca4badbd735106ca585415e702a"
+      },
+      "adapter/3.14/train/accepted.jsonl": {
+        "files": 150000,
+        "sha256": "b26774f72fbb7ab87d4c2c5512a62773010c524a98387587d406ff48ff805aa8"
+      },
+      "adapter/3.14/validation/accepted.jsonl": {
+        "files": 1000,
+        "sha256": "c5b22505c1cfcb84557b8c09aa837ff36e3df361add039fc9ae889ba52107976"
+      },
+      "adapter/3.15/train/accepted.jsonl": {
+        "files": 150000,
+        "sha256": "f7edf2b40ebc5cbe52660ff68a01ab87bf60529860c9fded7a7e9cbfb1e15929"
+      },
+      "adapter/3.15/validation/accepted.jsonl": {
+        "files": 1000,
+        "sha256": "8a32f4fde90ef90cd42549077b2f96d5124c6c9083ef6ee18bed6dad0cb2f160"
+      }
+    },
+    "pooled_source_identifiers": 1052604,
+    "pooled_source_identifiers_sha256": "71085f398a5e048a944fcb77315ff5534f6a5389d596f60a87b50593217da677",
+    "families": {
+      "statement": "f173e996b3b01e3adbfd177c317ad424f2f6ef0ea4181bb7b4239f8e6a976b32",
+      "segmentation": "08dc3788244861061f8114b37bd876b5d8aa629b7d7749e2eabd42949cbc49d1"
+    },
+    "model_inventory": {
+      "families/segmentation/backbone/config.json": {
+        "bytes": 807,
+        "sha256": "2e625c2a66917d5185e15ca40c6b25a365c20e0ef9f3a880fe3aaa907877bf9e"
+      },
+      "families/segmentation/backbone/model.safetensors": {
+        "bytes": 435572084,
+        "sha256": "ee9539b64efd69bc61d917e8ce25813e198d25cbdef219629190de27b8daeefe"
+      },
+      "families/segmentation/family.json": {
+        "bytes": 1450,
+        "sha256": "08dc3788244861061f8114b37bd876b5d8aa629b7d7749e2eabd42949cbc49d1"
+      },
+      "families/segmentation/tokenizer/opcode_registry.json": {
+        "bytes": 30322,
+        "sha256": "a4b8e18336a717eab51984e105ed000b7bcd5877a574d55a64039ee280c9f52e"
+      },
+      "families/segmentation/tokenizer/tokenizer.json": {
+        "bytes": 1312701,
+        "sha256": "61c4f9cd711448c6f71db41e93b6cbbe9fc3d0c994f3d427b0faecfd02e954df"
+      },
+      "families/segmentation/tokenizer/tokenizer_config.json": {
+        "bytes": 270,
+        "sha256": "7a1706a99aad022114224bd6892850a346dc51f8e1ab4505c31eb64753610018"
+      },
+      "families/statement/adapters/3.14/adapter-72b2c2c2d8cc3748dc15bf389bd90313e072d178252665d33aa0fde403d25b16.pt": {
+        "bytes": 28363412,
+        "sha256": "72b2c2c2d8cc3748dc15bf389bd90313e072d178252665d33aa0fde403d25b16"
+      },
+      "families/statement/adapters/3.14/adapter.json": {
+        "bytes": 4157,
+        "sha256": "549bdd2a4494f7360f3a36dd45781fd3abaa3fab8e0e9800316ff0c070781bb2"
+      },
+      "families/statement/adapters/3.15/adapter-a2f121959ca3a076a7160188889c8f0c10ff8258fd9e9826d276f1c97724d828.pt": {
+        "bytes": 28363412,
+        "sha256": "a2f121959ca3a076a7160188889c8f0c10ff8258fd9e9826d276f1c97724d828"
+      },
+      "families/statement/adapters/3.15/adapter.json": {
+        "bytes": 4157,
+        "sha256": "276b8149c000dfc88eebaef2d976ebf3d92a44ddcda1d380a4e087bd44a85693"
+      },
+      "families/statement/backbone/config.json": {
+        "bytes": 1689,
+        "sha256": "43586a9c6957a0e8cced1eeb7320e31fbbf6dba84eba62c1edd48f205ac3e409"
+      },
+      "families/statement/backbone/generation_config.json": {
+        "bytes": 7634,
+        "sha256": "453836a5991bb59488c3c1a4ad8171b133f648c30dfc6aeda4af598444a188c3"
+      },
+      "families/statement/backbone/model.safetensors": {
+        "bytes": 828512040,
+        "sha256": "382b13ae3d68fefce482d7cdbde014fff797ffe0aca2fdad963cba3c88554e8c"
+      },
+      "families/statement/family.json": {
+        "bytes": 8238,
+        "sha256": "f173e996b3b01e3adbfd177c317ad424f2f6ef0ea4181bb7b4239f8e6a976b32"
+      },
+      "families/statement/tokenizer/opcode_registry.json": {
+        "bytes": 30322,
+        "sha256": "522c85e983dcca62d12b648ca24f4fe4a5c554720eaf69aa130db6dffab495e4"
+      },
+      "families/statement/tokenizer/tokenizer.json": {
+        "bytes": 919053,
+        "sha256": "576881c7af5310402326eff7bf5584ad6e2f88dcfd4c998d4e8b6a26f243153f"
+      },
+      "families/statement/tokenizer/tokenizer_config.json": {
+        "bytes": 16970,
+        "sha256": "65524dc1bb8be53b6e407fc1279c79faf0562c77fe955ad006418fbd08fa2513"
+      },
+      "training-source-identities.json": {
+        "bytes": 132351157,
+        "sha256": "71085f398a5e048a944fcb77315ff5534f6a5389d596f60a87b50593217da677"
+      }
+    },
+    "host_audits": {
+      "triplesec1-gpu": {
+        "passed": true,
+        "date_utc": "2026-11-06T07:10:46.555015+00:00",
+        "versions": [
+          "3.6",
+          "3.7",
+          "3.8",
+          "3.9"
+        ],
+        "completed_utc": "2026-11-06T06:07:43.090302+00:00",
+        "git_commit": "84c65f938ee45c6175beb3b9b385c9550f2f0f3a",
+        "training_plan_sha256": "0567ed821c5605e850fc3e0be8ff4667d25b2cfc89e888e4125e4121cc1cab63",
+        "inventory_sha256": "c4fa24afa4682e0623d586ed1c8636e696c7aeac971e6fb8f923b422b3815501",
+        "verified_inventory_files": 18,
+        "families": {
+          "statement": "f173e996b3b01e3adbfd177c317ad424f2f6ef0ea4181bb7b4239f8e6a976b32",
+          "segmentation": "08dc3788244861061f8114b37bd876b5d8aa629b7d7749e2eabd42949cbc49d1"
+        },
+        "runtime_source_files": 69,
+        "runtime_manifest_sha256": "b49b734d4c7ca3dcfd78edd1b15ba0373238985b896d887739487087192f6d63",
+        "runner_sha256": "322ed839fb2052b38466b04e0f93bb48d841739cf638530f3f8739b66b4cf813",
+        "releases": {
+          "v1/3.6": {
+            "tag": "v1.1.0",
+            "commit": "a60d3b95748283ba0fbcd5e94da307d5bd5df870",
+            "files": 4780,
+            "listing_sha256": "112bd5c6c6576d35f7ddb59c96e9fe9e72e3287503096b0282f0fa690b66583f",
+            "official_files_sha256": "841a7da18d609f5ea782e4811627ef4332aac63d183e77c4091a9b5ef991f3a7",
+            "committed_pyc_blobs_verified": 4780
+          },
+          "v1/3.7": {
+            "tag": "v1.1.0",
+            "commit": "a60d3b95748283ba0fbcd5e94da307d5bd5df870",
+            "files": 4949,
+            "listing_sha256": "704df39e90b5796693c4c296a2c90bac12f240652ed8ca6152481abbfc812652",
+            "official_files_sha256": "4a9e3466a55f19386a5d5d234cfb5495f330b55735708edb4dc57a67fb50daa9",
+            "committed_pyc_blobs_verified": 4949
+          },
+          "v1/3.8": {
+            "tag": "v1.1.0",
+            "commit": "a60d3b95748283ba0fbcd5e94da307d5bd5df870",
+            "files": 4987,
+            "listing_sha256": "d514f56461eee060b9fe201793fe2529a3808b8a888aa44d784191dc349a4f34",
+            "official_files_sha256": "1bd273e9f30cde691d679d11c71854b67cbbfd26cd72b0305fc779ff946887ae",
+            "committed_pyc_blobs_verified": 4987
+          },
+          "v1/3.9": {
+            "tag": "v1.1.0",
+            "commit": "a60d3b95748283ba0fbcd5e94da307d5bd5df870",
+            "files": 4987,
+            "listing_sha256": "80d69b77c4c83bc4ceaca14a6521110ec6d28440f45a34c6ad7ff8bbb98163a2",
+            "official_files_sha256": "62150746a908755eb5534b15efcd3ff91f97bdd87ba1d44b6940c6e5debbe9ff",
+            "committed_pyc_blobs_verified": 4987
+          },
+          "v2/3.6": {
+            "tag": "v2.0.1",
+            "commit": "258bc0380f7c8550fa28f294b896cf168a5e4055",
+            "files": 1106,
+            "listing_sha256": "3abf05c6171bf14717aa107e8aa87e4835be8f992b56ccb2abf8e5c7654e20cf",
+            "official_files_sha256": "cc49fc8982e6cb38ad4f32d567b75bd09bae0f086e736e5db5a50b421c514576",
+            "committed_pyc_blobs_verified": 1106
+          },
+          "v2/3.7": {
+            "tag": "v2.0.1",
+            "commit": "258bc0380f7c8550fa28f294b896cf168a5e4055",
+            "files": 1198,
+            "listing_sha256": "c74dcf296a708f12f8bd33672aeef6306c8ce77c9333d2e3ef16d42bcdf2c21a",
+            "official_files_sha256": "61abb9bc10b9e07af645eeb2d2ea5e3af5a78e6e9c63499e6e79732148574f3b",
+            "committed_pyc_blobs_verified": 1198
+          },
+          "v2/3.8": {
+            "tag": "v2.0.1",
+            "commit": "258bc0380f7c8550fa28f294b896cf168a5e4055",
+            "files": 1284,
+            "listing_sha256": "43a1ac6431d6c1d594368134e7019c521cca2f7cc8a785857b962e5563981ac6",
+            "official_files_sha256": "d52f1a437e43430dd2130368cf53ccdc82bcf6292726f741856a2e7bb80fc20b",
+            "committed_pyc_blobs_verified": 1284
+          },
+          "v2/3.9": {
+            "tag": "v2.0.1",
+            "commit": "258bc0380f7c8550fa28f294b896cf168a5e4055",
+            "files": 1201,
+            "listing_sha256": "9d709af3d41689ea66a3685aa0767b626ed9a14c3d21e8abce3c8d2e1e7f87ac",
+            "official_files_sha256": "f2cbdb9ee26425b3d047c47a3f7e1b0acbb777312e56bc34c454f9c69721d8f3",
+            "committed_pyc_blobs_verified": 1201
+          }
+        },
+        "units": {
+          "v1/no_adapter/3.6": {
+            "file_results.jsonl": "8500c54b7d9b7db419c096404fb5b3c63078f203973c4f6c177fff8952fd2e73",
+            "selection.json": "05c8fa841f3bd8a17c6e4d8b09a8ecf84e6e77f7743166bcceb04f8250f5e83a",
+            "provenance.json": "82c123b75bb8fd59c57ef2a19ea543fcdb9222c319155ed24a33c806a068815a",
+            "runtime.json": "efaa66680a2e3e1585db477951f669541b05fdc41c128b990e337a270e7bd171",
+            "model_stats.json": "0a0399b00b88b3da81cafaea7730a8bf19e6e43fe39bde74a55b672a5d25f8dc",
+            "summary.json": "a6e91ed1ecb2aaae8b2785698e0aa3b4821a0727e12d5c66d9fbfb9fae477ea8",
+            "complete.json": "597d4f53c6785e4d54cc8b5d00ee9262729753694fc249b09eb65f25fd305c1d"
+          },
+          "v1/no_adapter/3.7": {
+            "file_results.jsonl": "196f98317e5f6cab4688a20fc9a18434e285b6e84779d1e230e772b7031989b3",
+            "selection.json": "9355f91ecc0b63871effd91d0255eeb659dfb30e923ca0c635e26b56403bac9c",
+            "provenance.json": "b39a9693180c2d7b8f65f8f6b68b49449fc565c6a256c5eafb51374958b05d30",
+            "runtime.json": "efaa66680a2e3e1585db477951f669541b05fdc41c128b990e337a270e7bd171",
+            "model_stats.json": "2f900a2cc011f43230acad44daa8f585b7679769736209a55cd6d6942f229f15",
+            "summary.json": "65ab6ce99d15a85d37777f893cd9e7219b57ef3f90aa7e67ebcae5c4baddf9b9",
+            "complete.json": "cb46c06682988adef759435c77c9efa5e885a748cb8ff1da8557e5f4f6b7cff5"
+          },
+          "v1/no_adapter/3.8": {
+            "file_results.jsonl": "ce5973a9e14e27a356593b999f673bf5396ce705639f3264f9135a3fb4de994a",
+            "selection.json": "bce229bdbbb7940fdd67f9f58e236767f2ec311fa10de200fda5ca5c4a308af8",
+            "provenance.json": "7ec8804973b5c2d4300d7eb1ce48122553b8a47443b7bd03e61e809b580b192d",
+            "runtime.json": "efaa66680a2e3e1585db477951f669541b05fdc41c128b990e337a270e7bd171",
+            "model_stats.json": "26d9baab816a135771be4c8c985bddf78ed237e62372e98285ffa3b84a8f80aa",
+            "summary.json": "e2d877573477f7d36cff989838c265c410bdbd8d0be93b74b097d44927f29603",
+            "complete.json": "4ebc304c55eae2f05348fcf1c4dc78403b8e262911854763ba65e81d5b617729"
+          },
+          "v1/no_adapter/3.9": {
+            "file_results.jsonl": "109f1d73f94c0ce174d4279f4ce2f52b83b6f85a32026ea31a47f660677853b7",
+            "selection.json": "a8f06a19346a9f343289e4be1d9235743e84a5a5d15eb00f6369ec37c638b709",
+            "provenance.json": "60428ffc563dc0a4b47cd20064125ee4bffef67b26d51795735890ab33a2fb56",
+            "runtime.json": "efaa66680a2e3e1585db477951f669541b05fdc41c128b990e337a270e7bd171",
+            "model_stats.json": "3beb4fa7cc8673080cd0fced5becd9759b7ef27c273316a4279a7dc00abaf552",
+            "summary.json": "694fced55906382af16be87068e027977fbc5b012c3c47f5810b29268c33122f",
+            "complete.json": "4ebc304c55eae2f05348fcf1c4dc78403b8e262911854763ba65e81d5b617729"
+          },
+          "v2/no_adapter/3.6": {
+            "file_results.jsonl": "5f919dbfde795dcd1aa7fda2f043abae34250ee5c0a130ca15c2676a25affdbf",
+            "selection.json": "e8fd0a5f99d66fb0106402e593240bf440c7173e339e8872e8c30dc15c4b98a3",
+            "provenance.json": "caef9a80604c8546566158f2b23db2ba9390b01d3aad9a4b73921fb05682cf98",
+            "runtime.json": "efaa66680a2e3e1585db477951f669541b05fdc41c128b990e337a270e7bd171",
+            "model_stats.json": "0a0399b00b88b3da81cafaea7730a8bf19e6e43fe39bde74a55b672a5d25f8dc",
+            "summary.json": "69e6c978e4a96e17d0a7ebb644196b1ce767b030a8dcf82860a56fbfd52496f4",
+            "complete.json": "7d1a49c790f6abb0b6da7f0b559dbf1208f8d90cc55905b83b83a1a755b18fab"
+          },
+          "v2/no_adapter/3.7": {
+            "file_results.jsonl": "04e83ba43d1dc232e403dbd87334200106a30713eb15c616a79374fa22057cdd",
+            "selection.json": "9a24659825f82508fbb4cf34f509ca8fbc3df84ea79cb6378054a1688efb2af5",
+            "provenance.json": "87c88f8e559f13751a0e1863b9af8c5335da342f338ed2bcbcc0359092718175",
+            "runtime.json": "efaa66680a2e3e1585db477951f669541b05fdc41c128b990e337a270e7bd171",
+            "model_stats.json": "2f900a2cc011f43230acad44daa8f585b7679769736209a55cd6d6942f229f15",
+            "summary.json": "e13b3cb15e09ed7d384b4f4e78d6763aac76893099575d193860da2b8b09ff3e",
+            "complete.json": "9e41a4e0feebc7ba15db07dba139c19d6d1d37d5d61f4a5465972d0a74e22cb4"
+          },
+          "v2/no_adapter/3.8": {
+            "file_results.jsonl": "3c62c6c4f3685a78d30c3b967e0323510f06feea5a10e4864519dc838c6f449f",
+            "selection.json": "1f76b1ce2a1bf4e03571eb8ee9a7115a42be480e6c7c458e25d6703d0c0f7e77",
+            "provenance.json": "93dba75404aa592977c12071a2be28294f684a25aa642f9f8113128bfa8cd337",
+            "runtime.json": "efaa66680a2e3e1585db477951f669541b05fdc41c128b990e337a270e7bd171",
+            "model_stats.json": "26d9baab816a135771be4c8c985bddf78ed237e62372e98285ffa3b84a8f80aa",
+            "summary.json": "9f3311f9f8008887dc633d3dda4cfdfe87c6d7caaf40d495bc2721238f39e6ed",
+            "complete.json": "8cd0be9e1460b5db690f452aec701caa3e596324fae01ec1ff4e0d8d7eec1232"
+          },
+          "v2/no_adapter/3.9": {
+            "file_results.jsonl": "d0df9c904280203a335b324b503d69d479d4e50a8756720a2a18c11f6f5dfb3d",
+            "selection.json": "3d092fa3b4afe9cf230ab8b3b78fccd921f59280321cc747f09ec8e2a24bb208",
+            "provenance.json": "9f363046d237a0ea96de3593beee887da0856015caf6ff14993de30da077fe7d",
+            "runtime.json": "efaa66680a2e3e1585db477951f669541b05fdc41c128b990e337a270e7bd171",
+            "model_stats.json": "3beb4fa7cc8673080cd0fced5becd9759b7ef27c273316a4279a7dc00abaf552",
+            "summary.json": "712115385afccc9de992ad9df467ad964daf291fa23e6c96fbdba3c93bc5a252",
+            "complete.json": "bed824409953394fa8aed55b3f5b6f0abdd198f5c1d7238849b70e868b4e4486"
+          }
+        },
+        "compilers_manifest_sha256": "8c19e588f143b5645c51c6d29aaa33d74733f4a55d8b323532e594fbb6259a02"
+      },
+      "triplesec2-gpu": {
+        "passed": true,
+        "date_utc": "2026-11-06T07:10:46.880224+00:00",
+        "versions": [
+          "3.10",
+          "3.11",
+          "3.12",
+          "3.13"
+        ],
+        "completed_utc": "2026-11-06T06:39:15.205407+00:00",
+        "git_commit": "84c65f938ee45c6175beb3b9b385c9550f2f0f3a",
+        "training_plan_sha256": "0567ed821c5605e850fc3e0be8ff4667d25b2cfc89e888e4125e4121cc1cab63",
+        "inventory_sha256": "c4fa24afa4682e0623d586ed1c8636e696c7aeac971e6fb8f923b422b3815501",
+        "verified_inventory_files": 18,
+        "families": {
+          "statement": "f173e996b3b01e3adbfd177c317ad424f2f6ef0ea4181bb7b4239f8e6a976b32",
+          "segmentation": "08dc3788244861061f8114b37bd876b5d8aa629b7d7749e2eabd42949cbc49d1"
+        },
+        "runtime_source_files": 69,
+        "runtime_manifest_sha256": "b49b734d4c7ca3dcfd78edd1b15ba0373238985b896d887739487087192f6d63",
+        "runner_sha256": "322ed839fb2052b38466b04e0f93bb48d841739cf638530f3f8739b66b4cf813",
+        "releases": {
+          "v1/3.10": {
+            "tag": "v1.1.0",
+            "commit": "a60d3b95748283ba0fbcd5e94da307d5bd5df870",
+            "files": 4991,
+            "listing_sha256": "e319553ed1ea15cb6aa6674a7905b3afc3b7e3a69e00c40a2c917921f10daab0",
+            "official_files_sha256": "80387e773d4406a6675cc447cdd14d394cb687e6361351152dc8343491ddc122",
+            "committed_pyc_blobs_verified": 4991
+          },
+          "v1/3.11": {
+            "tag": "v1.1.0",
+            "commit": "a60d3b95748283ba0fbcd5e94da307d5bd5df870",
+            "files": 4991,
+            "listing_sha256": "ee22fcbe9932ab2be9a2cec563fa430197eb75e9d0821fd7f0452a889c62511a",
+            "official_files_sha256": "378f737373b8a43732bc36c961557aa41acce4b8269ecf0cd9382620b34fdd95",
+            "committed_pyc_blobs_verified": 4991
+          },
+          "v1/3.12": {
+            "tag": "v1.1.0",
+            "commit": "a60d3b95748283ba0fbcd5e94da307d5bd5df870",
+            "files": 4962,
+            "listing_sha256": "25451d92d3356fbe94cc3ddd8a2161c1c7b0d897acee9a2492c16a0904ad697d",
+            "official_files_sha256": "0b8047c3f52a4288a928e0fe22f2ca899fe76fa2eefc4c227f8c50532e4a55b2",
+            "committed_pyc_blobs_verified": 4962
+          },
+          "v1/3.13": {
+            "tag": "v1.1.0",
+            "commit": "a60d3b95748283ba0fbcd5e94da307d5bd5df870",
+            "files": 4962,
+            "listing_sha256": "da82d092b298880a5bd996522bff2501bd85ce06fd7ddd297598d8ef2725fede",
+            "official_files_sha256": "05b2bc770c1cb04f2d4e9486e835794a6b0a3c3b6f43e7ae5ac846abd200444d",
+            "committed_pyc_blobs_verified": 4962
+          },
+          "v2/3.10": {
+            "tag": "v2.0.1",
+            "commit": "258bc0380f7c8550fa28f294b896cf168a5e4055",
+            "files": 1261,
+            "listing_sha256": "912a44eb39d19871132e11da567d1e1b8506d1959ddb74ab9fb41065c0bebcd3",
+            "official_files_sha256": "c388d229221ca8932f26f7a0231df2c0995bb3270cdd7cbe0a76769869dc5c7f",
+            "committed_pyc_blobs_verified": 1261
+          },
+          "v2/3.11": {
+            "tag": "v2.0.1",
+            "commit": "258bc0380f7c8550fa28f294b896cf168a5e4055",
+            "files": 1335,
+            "listing_sha256": "eb637d32a6d1952f81113c8b81586638177f3d09d7a11f74e704774fa26c460c",
+            "official_files_sha256": "305f90ed5a2e03c0d225e81847b97e8dcadf68fc70b483b21d30b555f985af5e",
+            "committed_pyc_blobs_verified": 1335
+          },
+          "v2/3.12": {
+            "tag": "v2.0.1",
+            "commit": "258bc0380f7c8550fa28f294b896cf168a5e4055",
+            "files": 1362,
+            "listing_sha256": "000950cf5868dcd431a43eeb21a9153bc7625c8c89f9cd4d1952aea39e70f57d",
+            "official_files_sha256": "ef4837f0fb27bd2146326a3ea92ef3f47796a675454ef97a4afd0d6faa45908c",
+            "committed_pyc_blobs_verified": 1362
+          },
+          "v2/3.13": {
+            "tag": "v2.0.1",
+            "commit": "258bc0380f7c8550fa28f294b896cf168a5e4055",
+            "files": 2788,
+            "listing_sha256": "11351c34f7bbeff3f8440f4ed3a6e41d22d31ec9e6b5de43cd59df7061a8779f",
+            "official_files_sha256": "ba54274b9ba7b6f7e870d1fa105a5be6103879982aa6235af76ea58506943702",
+            "committed_pyc_blobs_verified": 2788
+          }
+        },
+        "units": {
+          "v1/no_adapter/3.10": {
+            "file_results.jsonl": "f5071998283eb4ac99fbad9e24f301eff9e0844b74e4e7162c903f19f045a22f",
+            "selection.json": "c0add36ca9d74cd8a851804adcc3027b15c0272ac4be70812ca0982fe062851c",
+            "provenance.json": "4f7fe1ec95477e4d3ffb544b0074ba03d3d65ef9f4aeb6e998ace5bacebc93a2",
+            "runtime.json": "efaa66680a2e3e1585db477951f669541b05fdc41c128b990e337a270e7bd171",
+            "model_stats.json": "824796549ee93821f6ba0f4d1b102da25af436a04a76e6a3ed53237cb319ca72",
+            "summary.json": "71e5d0cc72979405e73f9b8a71fbd8690ffe1f5f0659abfdabbd7ed703d1973c",
+            "complete.json": "5465d0c37427483dd661f5e800bdc510aea4005e23e5d240775bc480582f1f07"
+          },
+          "v1/no_adapter/3.11": {
+            "file_results.jsonl": "b5e0a2907db393dda81c102ed4a0bb65ae94767d5659979d12cbe046103c753c",
+            "selection.json": "b49e589d6198cf8b4dc73ca66606d451877568de7b1c61721135c85241d2f52d",
+            "provenance.json": "eee64ee6422a0453e8ba932124f5f2b2f80878192220f9bd10461a7cdea024f4",
+            "runtime.json": "efaa66680a2e3e1585db477951f669541b05fdc41c128b990e337a270e7bd171",
+            "model_stats.json": "48d668c9505d82b22af124b702f5c563f60a967c2359c23e7e5b5f6b4bd5bd63",
+            "summary.json": "c9956b6f627fc2a24b8e486c1e5a074a877a0651ffee39c8d7d5baedf25013d0",
+            "complete.json": "5465d0c37427483dd661f5e800bdc510aea4005e23e5d240775bc480582f1f07"
+          },
+          "v1/no_adapter/3.12": {
+            "file_results.jsonl": "3c293e9424a0b4aa5f638eb8626b7bed0b452f76b8907bbd627eeee30f742c04",
+            "selection.json": "cf74c95040f1493e01775db3a8bf6ee97a9f12d191eba25e04fe856d72994d58",
+            "provenance.json": "aaa96afcd0f39a6b9264b7fa550b8ec9f245327753c09ca30dfa8a02e17c4d1e",
+            "runtime.json": "efaa66680a2e3e1585db477951f669541b05fdc41c128b990e337a270e7bd171",
+            "model_stats.json": "9f0645fa3022da27a806f83d2e49e1139d11a9becde8042ce7f9992cc120827c",
+            "summary.json": "81a5cd64bedf14ef9ff1b4fc59e5f5327a160f79947cf509f1ac597c04090066",
+            "complete.json": "45563a8052ab2f8f741e9721642f06658271ea3272ed0701559627634fb1d673"
+          },
+          "v1/no_adapter/3.13": {
+            "file_results.jsonl": "cc4b8fa1bec8539d7208860eed18ebb290ba58c9e6d71416a566f625531010e6",
+            "selection.json": "f0950742ff8ae961c2c740d6bbdcb2d274dc9c66570abf85b3c077906cce7006",
+            "provenance.json": "fa7687d2b41e7f88b51fe1d07fd5f614e50a571bc8fc4a6de83c4b98b3800a40",
+            "runtime.json": "efaa66680a2e3e1585db477951f669541b05fdc41c128b990e337a270e7bd171",
+            "model_stats.json": "cec334555f7f98983d4a8f2fc99cbacedea3cac133175bce9476e25784e9d06c",
+            "summary.json": "e2a4b0e19debb3c24160ea936a19b84d31cf80707474209cf09b575ed8089af8",
+            "complete.json": "45563a8052ab2f8f741e9721642f06658271ea3272ed0701559627634fb1d673"
+          },
+          "v2/no_adapter/3.10": {
+            "file_results.jsonl": "e318b00553ca20650edb67949d9b06ef1b9e825b7d8de71e7d34128af45f27b4",
+            "selection.json": "f9046ee392656c431d9d49b824a4e8d048e313dd77c2a24aa1c97e3682f1e874",
+            "provenance.json": "310b761bf3dc9e5a90ce2a503dc86b517532a51c8c258da3bdbb8f63e54f3f8b",
+            "runtime.json": "efaa66680a2e3e1585db477951f669541b05fdc41c128b990e337a270e7bd171",
+            "model_stats.json": "824796549ee93821f6ba0f4d1b102da25af436a04a76e6a3ed53237cb319ca72",
+            "summary.json": "2b7a3b31f628f977700f2fde6e0509e01531465d9fb9769fc243680a11b1d54a",
+            "complete.json": "1d390d0e8cc69a98e167a0ed8c582e9a59bdad69fa052a8e5685dfb6f47738d0"
+          },
+          "v2/no_adapter/3.11": {
+            "file_results.jsonl": "db0a285c421327f96c63558b73889f1a3cc28f8f2b38840895dec566d07d516c",
+            "selection.json": "45412b08d667d2b9662f9d65b061b142dceaa6a6e846d769472dcaf8497422ba",
+            "provenance.json": "d49182c0307cb45c078fedd5115933a5b60bd16646c9417396ae111a9a6d629e",
+            "runtime.json": "efaa66680a2e3e1585db477951f669541b05fdc41c128b990e337a270e7bd171",
+            "model_stats.json": "48d668c9505d82b22af124b702f5c563f60a967c2359c23e7e5b5f6b4bd5bd63",
+            "summary.json": "a48ce37831da91c2c43f229ef416e4ade2a8257ab008c8b7ac730fd653acdc58",
+            "complete.json": "b99096af46bfafa6bb78b23e67e4cd7e2911af45afca1e834f41419f6575142b"
+          },
+          "v2/no_adapter/3.12": {
+            "file_results.jsonl": "a1524d47907802371cca4efa2101c6f6e5433abd792abdaa7159e84439d45098",
+            "selection.json": "33ea4a25628aedba83675311c8f9c734390ac6b8185d9febb04acf90a4254d5d",
+            "provenance.json": "8d8a5f20fa785f3325361af891cf69477d8aafea9a6f650e5b29c64071fb57a6",
+            "runtime.json": "efaa66680a2e3e1585db477951f669541b05fdc41c128b990e337a270e7bd171",
+            "model_stats.json": "9f0645fa3022da27a806f83d2e49e1139d11a9becde8042ce7f9992cc120827c",
+            "summary.json": "606b83cd6129a00592a91d1d28a6c40a434ac0b0fc77cc0b7dafbe4aee83dd7c",
+            "complete.json": "be2c885660d5ab43c7bf18cca282fdb66f451d87dae0a031fa9dbd164fff5808"
+          },
+          "v2/no_adapter/3.13": {
+            "file_results.jsonl": "27fb8ea8eb172b281d3161dceef6304a6cd174577540c55aa8d2237513cd1371",
+            "selection.json": "c8578c35747193fcf7c0440af4690f3db0afd843084e73ab03894fc8de8c6438",
+            "provenance.json": "1450d370a5977a0ac2e7a61907364f6a9675d1aa88419539412f618daea8cdb6",
+            "runtime.json": "efaa66680a2e3e1585db477951f669541b05fdc41c128b990e337a270e7bd171",
+            "model_stats.json": "cec334555f7f98983d4a8f2fc99cbacedea3cac133175bce9476e25784e9d06c",
+            "summary.json": "2b1b47df446ff0eff583b5b960d13b0d2aa1e957976bee424efccf8e19f61115",
+            "complete.json": "251a7139408fb48711e42b9380db842feba85f036586e85121d5c80c78f00d64"
+          }
+        },
+        "compilers_manifest_sha256": "8c19e588f143b5645c51c6d29aaa33d74733f4a55d8b323532e594fbb6259a02"
+      }
+    },
+    "compilers": {
+      "3.6": {
+        "version": "Python 3.6.15",
+        "magic": "330d0d0a",
+        "binary_sha256": "3b386edb6d483cc89abee0f13c83a725144a797578198777e0793ffd79e5417e"
+      },
+      "3.7": {
+        "version": "Python 3.7.17",
+        "magic": "420d0d0a",
+        "binary_sha256": "ab794a00c887a715aa13a9a416c98d2b2e609fbb149a2cd5a826f4124e6a1812"
+      },
+      "3.8": {
+        "version": "Python 3.8.20",
+        "magic": "550d0d0a",
+        "binary_sha256": "50b2635efef27759a03804979b1a4dc307942ec7bda0a8cccbac376704eafcd5"
+      },
+      "3.9": {
+        "version": "Python 3.9.25",
+        "magic": "610d0d0a",
+        "binary_sha256": "84c920f304e265c53096e42d83309c6f7b829988f937a7dd15c24eebcb63f59a"
+      },
+      "3.10": {
+        "version": "Python 3.10.20",
+        "magic": "6f0d0d0a",
+        "binary_sha256": "05b23a85a11d84745cdc1e297d21b59dfefe2eca9636f61e24f2f3e84e618a33"
+      },
+      "3.11": {
+        "version": "Python 3.11.15",
+        "magic": "a70d0d0a",
+        "binary_sha256": "2c676ebca162bd6ead9ca5319723f2e89a1110b327db51fb0e07f2f1c49f162a"
+      },
+      "3.12": {
+        "version": "Python 3.12.13",
+        "magic": "cb0d0d0a",
+        "binary_sha256": "37722883ebdbb3826bca481b85402fe7dbec0d613ad35f91b7ad3c50082700cd"
+      },
+      "3.13": {
+        "version": "Python 3.13.14",
+        "magic": "f30d0d0a",
+        "binary_sha256": "47d42800dda8f60eaae1f62092a107314157dbc2378cd410b2e0af059cb01ebb"
+      }
+    },
+    "runtime_sha256": {
+      "pylingual/__init__.py": "57915b3d1e7af62e174efc312125f6b01d24da492ff3be07bf21cf74bba135fd",
+      "pylingual/control_flow_reconstruction/cfg.py": "d51a0f018d70706ac264eaca9b756acc5e7037d3c24f61d32e02ee4f0ea91fa0",
+      "pylingual/control_flow_reconstruction/cft.py": "d1afd9f855dc1902035cc383d05abeeb61a0dfe5a0325bda28e09a3c74385451",
+      "pylingual/control_flow_reconstruction/source.py": "cec9747f13a3445df77824c63f869f84c069137e5f44374745b5bef97a0959ba",
+      "pylingual/control_flow_reconstruction/structure.py": "687c8644323e0f4318e3e40290453a4895fef2c0ba84143e02e652190d2e8bcb",
+      "pylingual/control_flow_reconstruction/templates/Block.py": "b198d8c12cfd6d9d4e108f7915af6f8fa767967e44da8a6246698b45dbaa9386",
+      "pylingual/control_flow_reconstruction/templates/CDG.py": "63d54587387a828c7a1368337e9ffcd74101d8acf05d229ceb9cc93594187925",
+      "pylingual/control_flow_reconstruction/templates/Conditional.py": "e3bf05fb871bd3ac230cae4ba12fb43d61ad0e94161889972c22e6f906191de4",
+      "pylingual/control_flow_reconstruction/templates/Exception.py": "05e8e6acdb96d84bdf1481bca1d32286cca63d56b144914b6db8f2515c2a50cd",
+      "pylingual/control_flow_reconstruction/templates/Generator.py": "5ac9026ba7d9a2e4d810e56ca51efb5478398c701d651aa5a853a5a7df3fd05a",
+      "pylingual/control_flow_reconstruction/templates/Loop.py": "14e57ebe74f762376210d33a737fdd95178367b986d5ca64d58a65fef51c219f",
+      "pylingual/control_flow_reconstruction/templates/Match.py": "8be081b2c06b7f34309ddfc385294e39baeb101ba6d310a9c4f32d258b8e8b3f",
+      "pylingual/control_flow_reconstruction/templates/With.py": "cdbeb3e7e9ee7807e2862685a6f894b548c83bf2717da8ed9db30799cc72cb4a",
+      "pylingual/control_flow_reconstruction/templates/__init__.py": "9ad2add96ea78822ef8c8a27f288a159851a5e17a182cfbd9f9f3f2926903930",
+      "pylingual/control_flow_reconstruction/utils.py": "9790d2055a3ac8f1c9d3fe2d1384efe36f280b29626329f5b2549643d4360466",
+      "pylingual/decompiler.py": "719d98c8e8b46339fcd7e552fed26c397cbaf0d7ccb6e46b99a0ba66b961be2a",
+      "pylingual/editable_bytecode/EditableBytecode.py": "04037dda71d1096ec0ccd0947e364e0fd912a8d19e56826612f8e3b52695f447",
+      "pylingual/editable_bytecode/Instruction.py": "0eaa9eab81fd11af6ba0eb6394c48cf7e279efa26051fff8929284dbfb7b7f61",
+      "pylingual/editable_bytecode/PYCFile.py": "e7075be60369fe44d038b9487ce6f37a84935cf85e62497b1cb849570bec9a23",
+      "pylingual/editable_bytecode/__init__.py": "4f47ce1f35beea0b086200aca862ce37ea6b8a86ce3847ea474459614caa9f1c",
+      "pylingual/editable_bytecode/bytecode_patches/__init__.py": "4e51c0fe467a310a3a3d6e4a2fddc56e7d95e0ed14daa520c6f80154d901c66f",
+      "pylingual/editable_bytecode/bytecode_patches/fix_indirect_jump.py": "93de6b6b39b75392df7017dbd0efd7d4eee91633067297790bfcc7ac393e4a8a",
+      "pylingual/editable_bytecode/bytecode_patches/fix_unreachable.py": "5f5f291e04b92dd9663b789c623f962dc8c5f3c8b7c7ba5733baa8df1904d10a",
+      "pylingual/editable_bytecode/bytecode_patches/remove_comprehension_get_iter.py": "397edba2bd1a11c39b8d77c6387fe2a1e2f4d57ceb75a1dab2e3abbd537e70bb",
+      "pylingual/editable_bytecode/bytecode_patches/remove_docstrings.py": "3903c7b3975689323289d240ef87f39910d3af81182b47307ddbd1f044228917",
+      "pylingual/editable_bytecode/bytecode_patches/remove_extended_arg.py": "3b2d1de0f01638acf0051494f8296c2ea54950ba8fe04baf75204bb1892618b3",
+      "pylingual/editable_bytecode/bytecode_patches/remove_nop.py": "8b48eddaa4d9fcb81b35d2f9d3385c89b83918c16a9c7c6f548d036a6b0138d6",
+      "pylingual/editable_bytecode/bytecode_patches/replace_borrow.py": "1cba5a3c5c5e92a2cb2dcb8419bc780748c101a7dcda1abd1631332cdc836326",
+      "pylingual/editable_bytecode/bytecode_patches/replace_firstlno.py": "043f4ed1b5e0a52a81a8ef98a192a21225bc177072becc7ec1620c14ac695d0f",
+      "pylingual/editable_bytecode/bytecode_patches/split_loads.py": "b224485066a7d82c978bb3233b3b65ab4a5c8d23153f1d89b61800ff97122f1c",
+      "pylingual/editable_bytecode/control_flow_graph.py": "42516f4b1e92fd06ca31aeeb6889cbd767287dce211bc72beba940e69eb440af",
+      "pylingual/editable_bytecode/utils.py": "f3181fd9cdb1e61d517e54895cfaf1bf44de31b787f268556f139b4a16f87276",
+      "pylingual/embedding_updates.py": "9184fc0fffc9e8611d57bbe1c4d2dbfaed2f6945b73135fcf0d04f7d659f4a82",
+      "pylingual/equivalence_check.py": "32c3ee458dea8e8f0ae5e4200b73837c44760f2ebe964a2594f1bff29540cbd8",
+      "pylingual/lora.py": "68fdaa3ed58266e50fa65e71b29d955ed0c1b8148fcd1ad10e04b96c41952841",
+      "pylingual/main.py": "f35c15b08910e9f31a57f815fc95ea6e62d13f26f3726ddc1611c433a049d2fc",
+      "pylingual/masking/ast_masker.py": "7226523105002063f727ffff8849618dafb8b60297f3dca5dac6225c075747bd",
+      "pylingual/masking/global_masker.py": "3ac00273084e86d0cd70bd41cb3947b99554df398edab9893cd6ec5b3e0e2b8d",
+      "pylingual/masking/model_disasm.py": "ec6312295b6d3ab25537a1957d2d19146fc91e21b2826b44125aef64d72c67cc",
+      "pylingual/models.py": "addd5bd52e51cf7281cb76fa80dac9ffb3c97d30fa2b06abc642aebf4c8db346",
+      "pylingual/opcode_segmenter.py": "cf6171812b04b6c784e1023ff19e2d2ee7594fe0d0f6a64ac809e8da04fbb9c5",
+      "pylingual/opcodes.py": "33c1ce0fa0d04e54f9a60962842c74369062766b64f667a6690ab2023f24b614",
+      "pylingual/preprocessor/__init__.py": "05e85f1f14218a3ab80e9f39baa986458171c03ccaeaebaa27dbcdc226736377",
+      "pylingual/preprocessor/container_recovery/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "pylingual/preprocessor/container_recovery/recovery.py": "e9fc111c8e070314b453b2dc98c8a3404385b655bba65879f42cb559cdb02d7d",
+      "pylingual/preprocessor/container_recovery/segment.py": "6242faac21f74ee097db6f83d0dd4ef316060acbe684f8db730578f3ff000b4b",
+      "pylingual/preprocessor/container_recovery/stack_analysis.py": "9ef117150eda248fb970ce624e58841e65aa0603949f7bc1841a8c5a0cf80c84",
+      "pylingual/preprocessor/container_recovery/strategies/__init__.py": "8e7006d521c159465efb1202442bddb589c8ddcb10ea3a1a77a6d1661fc47781",
+      "pylingual/preprocessor/container_recovery/strategies/const.py": "4d4b0fd88c729ee92089fb9bb6a4e2287e7c6d3f1dacedca7ad17ec59685d95b",
+      "pylingual/preprocessor/container_recovery/strategies/dict.py": "b6168fafd88015a7515fac79114925ea4dda1a51592e929dc25bcedd86c9670e",
+      "pylingual/preprocessor/container_recovery/strategies/list.py": "9c2bc527f8d849b9dca73260b9770d8cd58bdd27cacc7eaf19c50e7cec01bdd0",
+      "pylingual/preprocessor/container_recovery/strategies/set.py": "cd1aa0cd880d7ed40a7a3b243b5939de20d38ddca31dba42e1f28519c558442d",
+      "pylingual/preprocessor/container_recovery/strategies/tuple.py": "96c7cc6ceb3f9ef3f1efe776670c8f5830eb34d338404ab4813c3f1ea6372349",
+      "pylingual/preprocessor/container_recovery/utils.py": "43da4e2bce85011874f99847939e7a68ad9a7b47fea79319dae6b63dd61e8a1d",
+      "pylingual/preprocessor/preprocessor.py": "0ed39a3ec088ea32364bb8802bf5e10d741f6a0d06e3c0e0579fb2a4e5c50bad",
+      "pylingual/segmentation/segmentation_search_strategies.py": "ea3515a18c1e0059c28f518fcfb3ba333690f3a94821833df9eab81d788b9d87",
+      "pylingual/segmentation/sliding_window.py": "d476b0a49c4186a52d82c0399d73fbc020d463a348973c73147ee725ba574cb4",
+      "pylingual/shared_models.py": "439d4698b2542bf12f6be736d69105abc774881226a09578f1d0b63c8e91af91",
+      "pylingual/utils/ascii_art.py": "c5589b90281bdf6384f4676a8aeedf25f5bbc441b3392942c4e41673331fb0fa",
+      "pylingual/utils/generate_bytecode.py": "cd8294cd4303fe69404dbec23d7236541492227808128aeda468b34d0728aff2",
+      "pylingual/utils/get_logger.py": "18146726fe96e6bbdde2f5a8ac77a2135d3d8edde6022f80a1ae6a06374b85d3",
+      "pylingual/utils/lazy.py": "e548cd9e95ea8b9a833b6d5355b57ef5aeb4d160ea3bdb11c01a6dd3f5d87019",
+      "pylingual/utils/lists.py": "77d1a52f7df02dce22bc2f432fede92c55ddd4737b6fe3b9fed8e69bac27d1e5",
+      "pylingual/utils/tracked_list.py": "b13b68cffba5cc2bd584ceb946100354fb5dd8502a0a37e7960753ec94b21386",
+      "pylingual/utils/use_escape_sequences.py": "a23fd2abc9be55c0cf5ed84c1a12a2d74468a6b98ffc8e19039810a6826ea2ae",
+      "pylingual/utils/version.py": "3a19000cefdc7d04d0a919c0d5d7ff92a7dd068ad35aec7ffc436f324f42044e",
+      "dev_scripts/benchmark_shared_v1.py": "9515c62da44dd2e3f46e4ca1dc1e9332aa153773af8d331767e6730712f516c8",
+      "dev_scripts/evaluate_shared.py": "95686e99c8eecf0d1a77388e875c90126c250e6991189e8e9f7afb46ec1562b6",
+      "dev_scripts/benchmark_full_retrain.py": "ab9b293f6e03f5655fe197c13dd60cd84b0cbb619c538f9d5ae18712a5e47140"
+    },
+    "runtime_manifest_sha256": "b49b734d4c7ca3dcfd78edd1b15ba0373238985b896d887739487087192f6d63",
+    "ast_identical_scoring_and_model_functions": [
+      "unit",
+      "selection",
+      "runtime",
+      "preflight",
+      "paired",
+      "statement_family",
+      "segmentation_family"
+    ],
+    "units": {
+      "v1/no_adapter/3.6": {
+        "files": 4780,
+        "equal_files": 4114,
+        "file_accuracy": 0.8606694560669456,
+        "categories": {
+          "Equal": 4114,
+          "CompileError": 232,
+          "Different": 434
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "8500c54b7d9b7db419c096404fb5b3c63078f203973c4f6c177fff8952fd2e73"
+      },
+      "v1/no_adapter/3.7": {
+        "files": 4949,
+        "equal_files": 4258,
+        "file_accuracy": 0.8603758335017175,
+        "categories": {
+          "Equal": 4258,
+          "CompileError": 257,
+          "Different": 434
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "196f98317e5f6cab4688a20fc9a18434e285b6e84779d1e230e772b7031989b3"
+      },
+      "v1/no_adapter/3.8": {
+        "files": 4987,
+        "equal_files": 4286,
+        "file_accuracy": 0.8594345297774213,
+        "categories": {
+          "Equal": 4286,
+          "CompileError": 271,
+          "Different": 430
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "ce5973a9e14e27a356593b999f673bf5396ce705639f3264f9135a3fb4de994a"
+      },
+      "v1/no_adapter/3.9": {
+        "files": 4987,
+        "equal_files": 4301,
+        "file_accuracy": 0.8624423501102867,
+        "categories": {
+          "Equal": 4301,
+          "CompileError": 259,
+          "Different": 427
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "109f1d73f94c0ce174d4279f4ce2f52b83b6f85a32026ea31a47f660677853b7"
+      },
+      "v2/no_adapter/3.6": {
+        "files": 1106,
+        "equal_files": 316,
+        "file_accuracy": 0.2857142857142857,
+        "categories": {
+          "Equal": 316,
+          "Different": 439,
+          "CompileError": 351
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "5f919dbfde795dcd1aa7fda2f043abae34250ee5c0a130ca15c2676a25affdbf"
+      },
+      "v2/no_adapter/3.7": {
+        "files": 1198,
+        "equal_files": 361,
+        "file_accuracy": 0.3013355592654424,
+        "categories": {
+          "Equal": 361,
+          "Different": 450,
+          "CompileError": 387
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "04e83ba43d1dc232e403dbd87334200106a30713eb15c616a79374fa22057cdd"
+      },
+      "v2/no_adapter/3.8": {
+        "files": 1284,
+        "equal_files": 383,
+        "file_accuracy": 0.2982866043613707,
+        "categories": {
+          "Equal": 383,
+          "Different": 465,
+          "CompileError": 436
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "3c62c6c4f3685a78d30c3b967e0323510f06feea5a10e4864519dc838c6f449f"
+      },
+      "v2/no_adapter/3.9": {
+        "files": 1201,
+        "equal_files": 354,
+        "file_accuracy": 0.29475437135720234,
+        "categories": {
+          "Equal": 354,
+          "Different": 460,
+          "CompileError": 387
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "d0df9c904280203a335b324b503d69d479d4e50a8756720a2a18c11f6f5dfb3d"
+      },
+      "v1/no_adapter/3.10": {
+        "files": 4991,
+        "equal_files": 4250,
+        "file_accuracy": 0.851532758966139,
+        "categories": {
+          "Equal": 4250,
+          "CompileError": 244,
+          "Different": 497
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "f5071998283eb4ac99fbad9e24f301eff9e0844b74e4e7162c903f19f045a22f"
+      },
+      "v1/no_adapter/3.11": {
+        "files": 4991,
+        "equal_files": 4334,
+        "file_accuracy": 0.8683630534962933,
+        "categories": {
+          "Equal": 4334,
+          "Different": 355,
+          "CompileError": 302
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "b5e0a2907db393dda81c102ed4a0bb65ae94767d5659979d12cbe046103c753c"
+      },
+      "v1/no_adapter/3.12": {
+        "files": 4962,
+        "equal_files": 4288,
+        "file_accuracy": 0.864167674324869,
+        "categories": {
+          "Equal": 4288,
+          "Different": 365,
+          "CompileError": 308,
+          "Timeout": 1
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "3c293e9424a0b4aa5f638eb8626b7bed0b452f76b8907bbd627eeee30f742c04"
+      },
+      "v1/no_adapter/3.13": {
+        "files": 4962,
+        "equal_files": 4183,
+        "file_accuracy": 0.8430068520757759,
+        "categories": {
+          "Equal": 4183,
+          "Different": 442,
+          "CompileError": 337
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "cc4b8fa1bec8539d7208860eed18ebb290ba58c9e6d71416a566f625531010e6"
+      },
+      "v2/no_adapter/3.10": {
+        "files": 1261,
+        "equal_files": 431,
+        "file_accuracy": 0.34179222839016654,
+        "categories": {
+          "Equal": 431,
+          "Different": 457,
+          "CompileError": 373
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "e318b00553ca20650edb67949d9b06ef1b9e825b7d8de71e7d34128af45f27b4"
+      },
+      "v2/no_adapter/3.11": {
+        "files": 1335,
+        "equal_files": 406,
+        "file_accuracy": 0.3041198501872659,
+        "categories": {
+          "Equal": 406,
+          "Different": 371,
+          "CompileError": 558
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "db0a285c421327f96c63558b73889f1a3cc28f8f2b38840895dec566d07d516c"
+      },
+      "v2/no_adapter/3.12": {
+        "files": 1362,
+        "equal_files": 489,
+        "file_accuracy": 0.3590308370044053,
+        "categories": {
+          "Equal": 489,
+          "Different": 338,
+          "CompileError": 534,
+          "Timeout": 1
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "a1524d47907802371cca4efa2101c6f6e5433abd792abdaa7159e84439d45098"
+      },
+      "v2/no_adapter/3.13": {
+        "files": 2788,
+        "equal_files": 1734,
+        "file_accuracy": 0.6219512195121951,
+        "categories": {
+          "Equal": 1734,
+          "Different": 479,
+          "CompileError": 575
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "27fb8ea8eb172b281d3161dceef6304a6cd174577540c55aa8d2237513cd1371"
+      }
+    },
+    "error_and_timeout_cases": [
+      {
+        "unit": "v1/no_adapter/3.12",
+        "category": "Timeout",
+        "relative": "python-3.12/ec51c2b0354281e6dfaf1565d85fda42b3092a3db84d726286e26005a78357784c08c922565596c55a93b0f6ab17ff1806fb8beccc94053c03032e74f12746d3/types.pyc",
+        "source_sha512": "ec51c2b0354281e6dfaf1565d85fda42b3092a3db84d726286e26005a78357784c08c922565596c55a93b0f6ab17ff1806fb8beccc94053c03032e74f12746d3",
+        "error": "TimeoutError: File-level evaluation wall-clock limit exceeded"
+      },
+      {
+        "unit": "v2/no_adapter/3.12",
+        "category": "Timeout",
+        "relative": "python-3.12/ec51c2b0354281e6dfaf1565d85fda42b3092a3db84d726286e26005a78357784c08c922565596c55a93b0f6ab17ff1806fb8beccc94053c03032e74f12746d3/types.pyc",
+        "source_sha512": "ec51c2b0354281e6dfaf1565d85fda42b3092a3db84d726286e26005a78357784c08c922565596c55a93b0f6ab17ff1806fb8beccc94053c03032e74f12746d3",
+        "error": "TimeoutError: File-level evaluation wall-clock limit exceeded"
+      }
+    ],
+    "negative_controls_rejected": [
+      "dropped_row",
+      "duplicate_row",
+      "changed_pyc_identity",
+      "fake_success",
+      "model_load_failure",
+      "source_overlap"
+    ],
+    "baseline_units": {
+      "v1/no_adapter/3.14": {
+        "files": 4991,
+        "equal_files": 4137,
+        "file_accuracy": 0.8288920056100981,
+        "categories": {
+          "Equal": 4137,
+          "CompileError": 331,
+          "Different": 521,
+          "Error": 1,
+          "Timeout": 1
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "b38d075e7819ed5b8919a6516aa44572da66fe9971e825c8f8b906b8910c4dad"
+      },
+      "v1/statement_adapter/3.14": {
+        "files": 4991,
+        "equal_files": 4155,
+        "file_accuracy": 0.8324984972951313,
+        "categories": {
+          "Equal": 4155,
+          "CompileError": 356,
+          "Different": 479,
+          "Timeout": 1
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "fe7a2f0b2e04e181ec27f4489ea9ba3d20c679e5223d4d1e4cad5e7e24381ef7"
+      },
+      "v2/no_adapter/3.14": {
+        "files": 1915,
+        "equal_files": 711,
+        "file_accuracy": 0.3712793733681462,
+        "categories": {
+          "Different": 599,
+          "CompileError": 603,
+          "Equal": 711,
+          "Error": 1,
+          "Timeout": 1
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "309b20eb17275a4a8b6598094b0ec15f65ea5b176719730041a375e03a451982"
+      },
+      "v2/statement_adapter/3.14": {
+        "files": 1915,
+        "equal_files": 717,
+        "file_accuracy": 0.37441253263707575,
+        "categories": {
+          "Different": 562,
+          "CompileError": 635,
+          "Equal": 717,
+          "Timeout": 1
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "ba403241d794e6cdbd7768bb0eed6586b1efe9b2736b2a58f0fbaec33588c07c"
+      },
+      "v1/no_adapter/3.15": {
+        "files": 4991,
+        "equal_files": 4124,
+        "file_accuracy": 0.8262873171709076,
+        "categories": {
+          "Equal": 4124,
+          "CompileError": 348,
+          "Different": 517,
+          "Error": 1,
+          "Timeout": 1
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "ce52ed4b6d3b7f4b30d9134975bb730abf86ac876d04f15075be33dec1dfcacf"
+      },
+      "v1/statement_adapter/3.15": {
+        "files": 4991,
+        "equal_files": 4139,
+        "file_accuracy": 0.8292927269084351,
+        "categories": {
+          "Equal": 4139,
+          "CompileError": 355,
+          "Different": 495,
+          "Error": 1,
+          "Timeout": 1
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "91f1df971173c9efdefaa21642694e1787724811862fb7f44a3af6afc17a56f2"
+      },
+      "v2/no_adapter/3.15": {
+        "files": 2078,
+        "equal_files": 846,
+        "file_accuracy": 0.40712223291626565,
+        "categories": {
+          "Different": 607,
+          "CompileError": 623,
+          "Equal": 846,
+          "Error": 1,
+          "Timeout": 1
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "61af8f563db1bfb8defef9ec5e5917d99b6e81399fcabe91162b5b20fd4cd706"
+      },
+      "v2/statement_adapter/3.15": {
+        "files": 2078,
+        "equal_files": 849,
+        "file_accuracy": 0.40856592877767084,
+        "categories": {
+          "Different": 584,
+          "CompileError": 643,
+          "Equal": 849,
+          "Error": 1,
+          "Timeout": 1
+        },
+        "source_overlap": 0,
+        "model_load_errors": 0,
+        "journal_sha256": "9c831165bb5d425811b3efce39556c9f625eeb87bee82e69bd54075dd5b07ded"
+      }
+    },
+    "original_baseline_artifact_sha256": "5d0c834f08e9b5435f5f40bf268c286ed08082a1951a54c8b88a6b7f74c1a367",
+    "audit_scripts_sha256": {
+      "audit-other-versions-host.py": "0f7aa3c1bfc0c603185d70a0a9dc410c358791bd62eed8690ee2fd749d125850",
+      "audit-other-versions-final.py": "c054a2d01b667edc25764032d73260909445abef55376e8b3e3f7f93e5f0d646"
+    },
+    "limits": [
+      "Raw source membership is checked; canonical equivalence and project-disjointness are not rederived.",
+      "Version-specific official input lists differ; cross-version percentages are not a paired difficulty comparison.",
+      "One training seed; all versions in backbone training; no unseen-version transfer or controlled speed claim.",
+      "No adapters for 3.6-3.13; original 3.14/3.15 LoRA comparisons are separate completed evaluations."
+    ]
+  },
+  "evidence": {
+    "workspace": "/home/henry/docs/pylingual-experiments/shared-training-v3-150k-20261102/other-versions-benchmark",
+    "independent_audit_sha256": "9aa4041a61cfef5c14e707572b9ed4b7e1f062208c79d8b1759eebc3add9e038",
+    "compiler_manifest_sha256": "507608a9fc6aa4df82b0bd572c580b9f5f02133ef2d2f2abe15f0f2766af30d2",
+    "host_receipts_sha256": {
+      "triplesec1-gpu": "27e59addd0c03793ac5c8c38b09b99e00b0145bf1b71b19a8077cda8e2da28c8",
+      "triplesec2-gpu": "ce5de9ea4bbbac70e2a6f240ca1b9f20129aa2b2942a99546fba07214ef7427a"
+    },
+    "audit_scripts_sha256": {
+      "audit-other-versions-host.py": "0f7aa3c1bfc0c603185d70a0a9dc410c358791bd62eed8690ee2fd749d125850",
+      "audit-other-versions-final.py": "c054a2d01b667edc25764032d73260909445abef55376e8b3e3f7f93e5f0d646"
+    },
+    "runner_sha256": "322ed839fb2052b38466b04e0f93bb48d841739cf638530f3f8739b66b4cf813",
+    "checks": [
+      "9 shared benchmark-version and v3-plan tests passed",
+      "6 audit negative controls rejected",
+      "unchanged official reporter matches independent counts and categories"
+    ],
+    "original_3_14_3_15_results": "shared-v3-benchmark-2026-11-05.json"
+  }
+}

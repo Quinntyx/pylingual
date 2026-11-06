@@ -1,5 +1,13 @@
 # Model Training
 
+> **Historical experiment:** the shared-backbone/LoRA work is preserved in
+> [Shared-backbone experiment history](SHARED_BACKBONE_HISTORY.md), with completed v3
+> benchmarks and immutable artifact references. The clean successor starts from current
+> `dev` and uses base segmentation and translation models without LoRAs.
+
+The earlier [tokenizer and adapter design](SHARED_TOKENIZER_TRAINING.md) remains a
+historical record, not the implementation plan for the successor.
+
 PyLingual's accuracy is dependent on having accurate segmentation and statement models [^1]. The segmentation model divides a list of bytecode instructions into groups for each source instruction. The statement model transforms each group of instructions into source code. The instructions for training these models is as follows:
 
 ## Dataset generation

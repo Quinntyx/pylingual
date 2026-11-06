@@ -10,9 +10,16 @@ from pylingual.decompiler import Decompiler
 from pylingual.equivalence_check import TestResult
 
 
+class FixtureInstruction(SimpleNamespace):
+    # Real Inst objects use identity hashing in upstream SourceContext.reads.
+    __hash__ = object.__hash__
+    __eq__ = object.__eq__
+
+
 class SequenceTemplate:
     def __init__(self, instructions):
         self.instructions = instructions
+        self.blame = instructions[0].bytecode.codeobj
         self.templates = [InstTemplate(inst) for inst in instructions]
         self.header_lines = []
 
@@ -29,7 +36,11 @@ def make_decompiler():
     d.ordered_bytecodes = [SimpleNamespace(codeobj=co, name=f"fixture_{i}", globals=[], nonlocals=[], parent=None) for i, co in enumerate(codes)]
     d.ordered_instructions = []
     for bc in d.ordered_bytecodes:
-        d.ordered_instructions.append([SimpleNamespace(bytecode=bc, starts_line=None, opname="NOP", offset=j * 2) for j in range(2)])
+        d.ordered_instructions.append([FixtureInstruction(bytecode=bc, starts_line=None, opname="NOP", offset=j * 2) for j in range(2)])
+    d.codeobj_instruction_lists = [["NOP" for _ in insts] for insts in d.ordered_instructions]
+    d.check_timeout = None
+    d.unmask_cache = {}
+    d.unmask_cache_size = 0
     d.segmentation_results = [[{"entity": "B", "score": 0.5}, {"entity": "B", "score": 0.5}] for _ in codes]
     d.translation_results = [[f"value = {i}", "value = MASK_10"] for i in range(3)]
     d.global_masker = SimpleNamespace(global_tab={10: "MASK_10"}, get_model_view=lambda inst: "NOP")

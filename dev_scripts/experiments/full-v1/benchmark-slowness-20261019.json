@@ -1,0 +1,141 @@
+{
+  "file_latency": [
+    {
+      "arm": "control",
+      "version": "3.14",
+      "files": 1915,
+      "sum_file_seconds": 10787.9,
+      "median_seconds": 3.378,
+      "mean_seconds": 5.633,
+      "p95_seconds": 20.939,
+      "code_objects": 17887,
+      "verification_checks": 20740,
+      "by_category": {
+        "CompileError": {
+          "n": 1616,
+          "total_seconds": 8550.03,
+          "mean_seconds": 5.291
+        },
+        "Different": {
+          "n": 187,
+          "total_seconds": 429.85,
+          "mean_seconds": 2.299
+        },
+        "Equal": {
+          "n": 22,
+          "total_seconds": 6.25,
+          "mean_seconds": 0.284
+        },
+        "Error": {
+          "n": 36,
+          "total_seconds": 176.76,
+          "mean_seconds": 4.91
+        },
+        "Timeout": {
+          "n": 54,
+          "total_seconds": 1625.01,
+          "mean_seconds": 30.093
+        }
+      }
+    },
+    {
+      "arm": "control",
+      "version": "3.15",
+      "files": 89,
+      "sum_file_seconds": 551.27,
+      "median_seconds": 3.483,
+      "mean_seconds": 6.194,
+      "p95_seconds": 30.003,
+      "code_objects": 563,
+      "verification_checks": 640,
+      "by_category": {
+        "CompileError": {
+          "n": 72,
+          "total_seconds": 378.51,
+          "mean_seconds": 5.257
+        },
+        "Different": {
+          "n": 7,
+          "total_seconds": 11.8,
+          "mean_seconds": 1.686
+        },
+        "Equal": {
+          "n": 1,
+          "total_seconds": 0.21,
+          "mean_seconds": 0.21
+        },
+        "Error": {
+          "n": 4,
+          "total_seconds": 10.24,
+          "mean_seconds": 2.559
+        },
+        "Timeout": {
+          "n": 5,
+          "total_seconds": 150.51,
+          "mean_seconds": 30.102
+        }
+      }
+    }
+  ],
+  "live": {
+    "compile_rpc": [
+      {
+        "version": "3.14",
+        "seconds": 0.002409858861938119,
+        "success": true
+      },
+      {
+        "version": "3.15",
+        "seconds": 0.001394839957356453,
+        "success": true
+      },
+      {
+        "version": "3.14",
+        "seconds": 0.0014395748730748892,
+        "success": true
+      },
+      {
+        "version": "3.15",
+        "seconds": 0.0013309991918504238,
+        "success": true
+      },
+      {
+        "version": "3.14",
+        "seconds": 0.0011710838880389929,
+        "success": true
+      },
+      {
+        "version": "3.15",
+        "seconds": 0.001121029956266284,
+        "success": true
+      },
+      {
+        "version": "3.14",
+        "seconds": 0.0010791299864649773,
+        "success": true
+      },
+      {
+        "version": "3.15",
+        "seconds": 0.0011306079104542732,
+        "success": true
+      }
+    ],
+    "gpu_samples": [
+      "27, 17632, 160.05",
+      "27, 17632, 140.36",
+      "15, 17632, 118.63",
+      "42, 17632, 119.75",
+      "16, 17632, 118.00",
+      "0, 17632, 91.24",
+      "0, 17632, 74.62",
+      "0, 17632, 125.35"
+    ],
+    "processes": [
+      "    PID ELAPSED %CPU   RSS COMMAND",
+      "1051288     642 99.1 1856784 python",
+      "1052228       3  0.5 14832 python",
+      "1051287     642  0.0  9060 sshd-session",
+      "1037575   11460  0.0  6208 user-session-he"
+    ]
+  }
+}

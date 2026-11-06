@@ -1,0 +1,109 @@
+{
+  "study": "shared-backbone-50k-v1",
+  "seed": 20261016,
+  "base_statement_model": "Salesforce/codet5-base",
+  "neural_pylingual_checkpoint_initialization": false,
+  "segmenter": "fresh 30k WordPiece + fresh 12-layer RoBERTa MLM + B/I/E classification",
+  "total_paired_examples": 50000,
+  "examples_per_version": 5000,
+  "training_examples_per_version": 4500,
+  "validation_examples_per_version": 500,
+  "source_mix_per_version": {
+    "pypi": 4500,
+    "csn": 500
+  },
+  "source_mix_per_split": {
+    "train": {
+      "pypi": 4050,
+      "csn": 450
+    },
+    "validation": {
+      "pypi": 450,
+      "csn": 50
+    }
+  },
+  "backbone_versions": [
+    "3.6",
+    "3.7",
+    "3.8",
+    "3.9",
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14"
+  ],
+  "adapter_versions": [
+    "3.14",
+    "3.15"
+  ],
+  "source_host": "syssec-adwaith1",
+  "source_indexes": [
+    "/data2/data2_pypi_py_list_2023-06-03.txt",
+    "/data2/data2_csn_py_list_2023-06-03.txt"
+  ],
+  "source_transport": "Direct SSH from source host to training host; local compile RPC uses RAM only after remote reception",
+  "local_source_corpus_staging": false,
+  "file_diversity": "One eligible statement and one segmentation example per globally unique canonical source file",
+  "leakage_checks": {
+    "reserved_benchmark_source_ids": 2119,
+    "canonical_deduplication": "global across all versions and both splits",
+    "split": "SHA256(normalized docstring-replaced source), modulo10 =0 validation"
+  },
+  "training": {
+    "universal_epochs": 8,
+    "adapter_epochs": 8,
+    "segmentation_mlm_epochs": 5,
+    "batch_size": 16,
+    "gradient_accumulation": 2,
+    "effective_batch": 32,
+    "backbone_steps": 10125,
+    "adapter_steps_per_version": 1125,
+    "control_steps_per_version": 11250,
+    "mlm_steps_per_arm": 6329,
+    "selection": "Best validation loss; benchmark never used for checkpoint selection",
+    "sampler": "Full per-version coverage, equally interleaved, reshuffle only after complete epoch",
+    "lora": {
+      "rank": 8,
+      "alpha": 16,
+      "dropout": 0.05
+    }
+  },
+  "comparators": [
+    "generic-initialized version-only control with matched update budget",
+    "universal without adapters",
+    "universal plus matching version adapter"
+  ],
+  "file_benchmark": {
+    "files_per_version": {
+      "3.14": 1915,
+      "3.15": 2078
+    },
+    "hashed_source_ids": 1872,
+    "non_hash_fixture_cases": 408
+  },
+  "benchmark_versions": [
+    "3.14",
+    "3.15"
+  ],
+  "benchmark_execution_host": "pylingual-train RTX4090; existing local 3.14/3.15 compiler servers via loopback SSH gateway, no source corpus staged locally",
+  "component_metrics": [
+    "statement exact match",
+    "segmentation token accuracy",
+    "boundary F1"
+  ],
+  "file_metric": "Full-file recompilation equivalence; all failures and timeouts included",
+  "performance_metrics": [
+    "warm inference elapsed time distributions",
+    "cold model loading time",
+    "measured CUDA allocated/reserved peaks",
+    "actual model and adapter tensor bytes"
+  ],
+  "status": "Balanced 50k dataset complete; full generic CodeT5 universal statement training in progress; no full benchmark results yet",
+  "benchmark_arms": [
+    "control",
+    "no_adapter",
+    "statement_adapter",
+    "adapted"
+  ]
+}

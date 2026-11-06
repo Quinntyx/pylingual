@@ -276,17 +276,32 @@ class Decompiler:
             MAX_WINDOW_LENGTH = 512
             STEP_SIZE = 128
 
-            codeobj_list_instructions = (segmentation_request.split(bytecode_separator) for segmentation_request in self.segmentation_requests)
+            # A code object can have no modeled instructions (e.g. a stripped
+            # constant-return lambda). It has no boundaries to predict, not one
+            # empty opcode. Compact only the model requests, then restore the
+            # original code-object positions before updating instruction lines.
+            active_indices = [index for index, request in enumerate(self.segmentation_requests) if request]
+            if not active_indices:
+                self.segmentation_results = [[] for _ in self.segmentation_requests]
+                self.update_starts_line()
+                return
+            codeobj_list_instructions = (self.segmentation_requests[index].split(bytecode_separator) for index in active_indices)
             codeobj_token_list = []
 
             # make a list of instructions with their token lengths, can be turned into a list comp but readability suffers and complexity is increased
             for codeobj_instructions in codeobj_list_instructions:
                 token_list = []
-                tokenized_insts = self.segmenter.tokenizer(codeobj_instructions)
+                if hasattr(self.segmenter, "instruction_token_lengths"):
+                    token_lengths = self.segmenter.instruction_token_lengths(codeobj_instructions)
+                else:
+                    tokenized_insts = self.segmenter.tokenizer(codeobj_instructions)
+                    token_lengths = [len(tokenized_insts[i]) for i in range(len(codeobj_instructions))]
 
-                # map token length to instruction
-                for i, inst in enumerate(codeobj_instructions):
-                    token_list.append([inst, len(tokenized_insts[i])])
+                # Include structural-token overhead conservatively for window sizing.
+                for inst, length in zip(codeobj_instructions, token_lengths):
+                    if length > MAX_WINDOW_LENGTH:
+                        raise ValueError("One bytecode instruction exceeds the segmentation window")
+                    token_list.append([inst, length])
 
                 # map to codeobject
                 codeobj_token_list.append(token_list)
@@ -299,14 +314,19 @@ class Decompiler:
             window_coordinates, flat_window_requests, inst_index = zip(*window_segmentation_requests)
 
             window_segmentation_results = [filter_subwords(segmentation_result) for segmentation_result in self.segmenter(TrackedDataset(SEGMENTATION_STEP, list(flat_window_requests), check_timeout=self.check_timeout), batch_size=8)]
+            if len(window_segmentation_results) != len(inst_index):
+                raise ValueError("Segmentation returned the wrong number of windows")
+            if any(len(result) != len(indices) for result, indices in zip(window_segmentation_results, inst_index)):
+                raise ValueError("Segmentation predictions do not align to instruction windows")
 
-            self.segmentation_results = merge(list(window_coordinates), window_segmentation_results, list(inst_index), MAX_WINDOW_LENGTH, STEP_SIZE)  # merge everything
-
-            # force each code object to start with a 'B'
-
-            for codeobj in self.segmentation_results:
-                if codeobj:  # hoisted comprehensions have no instructions of their own
-                    codeobj[0]["entity"] = "B"
+            active_results = merge(list(window_coordinates), window_segmentation_results, list(inst_index), MAX_WINDOW_LENGTH, STEP_SIZE)
+            if len(active_results) != len(active_indices):
+                raise ValueError("Segmentation returned the wrong number of code objects")
+            self.segmentation_results = [[] for _ in self.segmentation_requests]
+            for index, codeobj in zip(active_indices, active_results):
+                # Force each nonempty code object to start with a 'B'.
+                codeobj[0]["entity"] = "B"
+                self.segmentation_results[index] = codeobj
 
             self.update_starts_line()
         except Exception as e:

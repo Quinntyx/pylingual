@@ -70,7 +70,10 @@ NESTED_RAISE = '''def run(kind=0):
 class NestedExceptionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.compiler = subprocess.check_output(["uv", "python", "find", "3.11", "--offline"], text=True, encoding="utf-8").strip()
+        try:
+            cls.compiler = subprocess.check_output(["uv", "python", "find", "3.11", "--offline"], text=True, encoding="utf-8").strip()
+        except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+            raise unittest.SkipTest("Requires uv and an offline Python 3.11 interpreter") from exc
 
     def pyc(self, source):
         command = "import importlib.util, marshal, sys; source = sys.stdin.read(); sys.stdout.buffer.write(importlib.util.MAGIC_NUMBER + bytes(12) + marshal.dumps(compile(source, 'nested_fixture.py', 'exec')))"

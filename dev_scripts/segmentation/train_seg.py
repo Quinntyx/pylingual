@@ -142,7 +142,7 @@ def train_segmentation_model(config: SegmentationConfiguration, public: bool = F
         compute_metrics=compute_metrics,
         processing_class=tokenizer,
     )
-    
+
     # Training
     trainer.train()
 

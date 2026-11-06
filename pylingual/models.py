@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import functools
 import gc
-import redis
+import hashlib
+import json
 import yaml
 import logging
 import threading
@@ -22,10 +23,12 @@ from pylingual.utils.version import PythonVersion
 from pylingual.utils.lazy import lazy_import
 
 if TYPE_CHECKING:
+    import redis
     import torch
     import transformers
     import huggingface_hub
 else:
+    lazy_import("redis")
     lazy_import("torch")
     lazy_import("transformers")
     lazy_import("huggingface_hub")
@@ -41,12 +44,15 @@ class CacheTranslator:
     :param maxsize : The maximum amount of cached items
     """
 
-    def __init__(self, model: transformers.T5ForConditionalGeneration, tokenizer: transformers.RobertaTokenizer, python_version: str, redis_cache_server_ip: str = None, redis_port: int = 1679, device="cpu", maxsize=50000):
+    def __init__(self, model: transformers.T5ForConditionalGeneration, tokenizer: transformers.RobertaTokenizer, device="cpu", maxsize=50000, *, python_version: str | None = None, redis_cache_server_ip: str = None, redis_port: int = 1679):
         self.model = model
         self.tokenizer = tokenizer
         self.device = device
         self.cache = OrderedDict()
         self.maxsize = maxsize
+        self.input_prefix = ""
+        self.generation_kwargs = {}
+        self.decode_excluded_ids = {0, 1, 2, 3, 4}
         self.model.to(self.device)
 
         # Redis Caching
@@ -60,19 +66,33 @@ class CacheTranslator:
         self.cache.move_to_end(item)
         return self.cache[item]
 
-    def _translate_and_decode(self, batch: list[str]) -> list[str]:
-        """Translate a single batch of requests"""
-        encoded = self.tokenizer(batch, return_tensors="pt", padding=True).to(self.device)
+    def _prepare_bytecode(self, text):
+        return text
 
-        with torch.no_grad():
-            output = self.model.generate(**encoded, max_length=512)
+    def _translate_and_decode(
+        self,
+        translation_requests: TrackedDataset | list[str],
+        batch_size: int = 32,
+        **kwargs,
+    ) -> list[str]:
 
         decoded_results = []
-        for tokens in output:
-            # explicitly filter out the special tokens we want to skip: <pad>, <s>, </s>, <unk>, <mask>
-            filtered_tokens = [tok for tok in tokens.tolist() if tok not in [0, 1, 2, 3, 4]]
-            # decode the remaining tokens
-            decoded_results.append(self.tokenizer.decode(filtered_tokens, skip_special_tokens=False))
+
+        # process in batches
+        for i in range(0, len(translation_requests), batch_size):
+            # TrackedDataset is indexable but does not support slices, and its
+            # iterator is stateful. Indexed access also makes retries replayable.
+            batch = [self.input_prefix + self._prepare_bytecode(translation_requests[j]) for j in range(i, min(i + batch_size, len(translation_requests)))]
+            encoded = self.tokenizer(batch, return_tensors= "pt", padding=True).to(self.device)
+
+            with torch.no_grad():
+                output = self.model.generate(**encoded, max_length=512, **self.generation_kwargs)
+
+            for tokens in output:
+                # explicitly filter out the special tokens we want to skip: <pad>, <s>, </s>, <unk>, <mask>
+                filtered_tokens = [tok for tok in tokens.tolist() if tok not in self.decode_excluded_ids]
+                # decode the remaining tokens
+                decoded_results.append(self.tokenizer.decode(filtered_tokens, skip_special_tokens=False))
 
         return decoded_results
 
@@ -80,23 +100,26 @@ class CacheTranslator:
         translation_results = []
         # process in batches
         for i in range(0, len(translation_requests), batch_size):
-            batch = translation_requests[i : i + batch_size]
+            batch = [translation_requests[j] for j in range(i, min(i + batch_size, len(translation_requests)))]
             try:
                 translation_results.extend(self._translate_and_decode(batch))
                 continue
+            except TimeoutError:
+                raise
             except Exception as e:
                 error = repr(e)
             # handled outside the except block so tensors can be freed
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-            if batch_size == 1:
+            if len(batch) == 1:
                 # fallback
                 logger.info(f"Could not translate statement ({error})")
                 translation_results.append("'''Decompiler error: line too long for translation. Please decompile this statement manually.'''")
             else:
                 # retry with a smaller batch size
-                logger.info(f"Lowering translation batch size to {batch_size // 2} ({error})")
-                translation_results.extend(self._translate_with_backoff(batch, batch_size=batch_size // 2))
+                next_size = max(1, len(batch) // 2)
+                logger.info(f"Lowering translation batch size to {next_size} ({error})")
+                translation_results.extend(self._translate_with_backoff(batch, batch_size=next_size))
         return translation_results
 
     def __call__(self, args: list, check_timeout: callable = None, **_):
@@ -142,6 +165,33 @@ def _cached_first(fn, *args, **kwargs):
         logger.info(f"{getattr(fn, '__qualname__', fn)} not found in local cache for {args[:1]}, downloading...")
         return fn(*args, local_files_only=False, **kwargs)
 
+class VersionedTranslator(CacheTranslator):
+    """A per-version output cache over one shared, unmerged backbone."""
+    def __init__(self, bank, tokenizer, device, version, prefix, use_adapter=True, *, redis_cache_server_ip=None, redis_port=1679, cache_namespace=None):
+        super().__init__(bank.model, tokenizer, device=device, python_version=version, redis_cache_server_ip=redis_cache_server_ip, redis_port=redis_port)
+        if self.redis_enabled:
+            self.redis_namespace_prefix = f"shared:{cache_namespace or id(bank)}:{version}:{use_adapter}:"
+        self.bank = bank
+        self.version = version if use_adapter else None
+        self.input_prefix = prefix.format(version=version)
+        self.python_version = version
+        if bank.registry is not None:
+            self.generation_kwargs = {"bad_words_ids": [[identifier] for identifier in bank.registry.forbidden_ids]}
+            # Trained BPE tokenizers can flag ordinary Python tokens as special.
+            # Discard only actual control tokens and input-only opcode tokens.
+            control_roles = ("bos", "eos", "pad", "unk", "mask", "cls", "sep")
+            control_ids = (getattr(tokenizer, f"{role}_token_id", None) for role in control_roles)
+            self.decode_excluded_ids = {identifier for identifier in control_ids if identifier is not None} | set(bank.registry.forbidden_ids)
+
+    def _prepare_bytecode(self, text):
+        return self.bank.bind_bytecode(text, self.python_version)
+
+    def __call__(self, *args, **kwargs):
+        # The output cache and all generation, including retries, share the lock.
+        with self.bank.use(self.version):
+            return super().__call__(*args, **kwargs)
+
+
 def _free_device_memory():
     gc.collect()
     if torch.cuda.is_available():
@@ -170,6 +220,12 @@ def _single_slot_cache(fn):
             loaded_key = key
             return loaded_models
 
+    def cache_clear():
+        nonlocal loaded_key, loaded_models
+        with lock:
+            loaded_key = loaded_models = None
+            _free_device_memory()
+    wrapper.cache_clear = cache_clear
     return wrapper
 
 @_single_slot_cache
@@ -184,8 +240,41 @@ def load_models(
     logger.info(f"Loading models for {version}...")
     with config_file.open() as f:
         config = yaml.safe_load(f)
-        seg_config = config[f"v{version}"]["SEGMENTATION_MODEL"]
-        stmt_config = config[f"v{version}"]["STATEMENT_MODEL"]
+        shared = config.get("SHARED_BACKBONES", {})
+        legacy = config.get(f"v{version}", {})
+
+    from pylingual.shared_models import load_family, load_version
+    # Keep upstream's explicit-device and CUDA/CPU policy (MPS is deliberately avoided).
+    device = torch.device(device) if device is not None else torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    root = Path(config_file).resolve().parent
+    use_adapters = shared.get("USE_ADAPTERS", True)
+    use_statement_adapters = shared.get("USE_STATEMENT_ADAPTERS", use_adapters)
+    use_segmentation_adapters = shared.get("USE_SEGMENTATION_ADAPTERS", use_adapters)
+    if "SEGMENTATION_MODEL" in shared:
+        if use_segmentation_adapters:
+            segmenter = load_version(root / shared["SEGMENTATION_MODEL"], "segmentation", str(version), device)
+        else:
+            from pylingual.lora import VersionedPipeline
+            bank, _, _, pipeline = load_family(root / shared["SEGMENTATION_MODEL"], "segmentation", device)
+            segmenter = pipeline.for_version(None, python_version=str(version)) if hasattr(pipeline, "for_version") else VersionedPipeline(pipeline, bank, None)
+    else:
+        seg_config = legacy["SEGMENTATION_MODEL"]
+        segmenter = _load_legacy_segmenter(seg_config, device, token)
+    if "STATEMENT_MODEL" in shared:
+        if use_statement_adapters:
+            bank, tokenizer, metadata = load_version(root / shared["STATEMENT_MODEL"], "statement", str(version), device)
+        else:
+            bank, tokenizer, metadata, _ = load_family(root / shared["STATEMENT_MODEL"], "statement", device)
+        family_identity = str((root / shared["STATEMENT_MODEL"]).resolve()) + json.dumps(metadata, sort_keys=True)
+        namespace = hashlib.sha256(family_identity.encode()).hexdigest()
+        return segmenter, VersionedTranslator(bank, tokenizer, device, str(version), metadata.get("source_prefix", ""), use_adapter=use_statement_adapters, redis_cache_server_ip=redis_cache_server_ip, redis_port=redis_port, cache_namespace=namespace)
+    stmt_config = legacy["STATEMENT_MODEL"]
+    translation_model = _cached_first(transformers.T5ForConditionalGeneration.from_pretrained, stmt_config["REPO"], revision=stmt_config["REVISION"], token=token)
+    translation_tokenizer = _cached_first(transformers.RobertaTokenizer.from_pretrained, stmt_config["TOKENIZER"], token=token)
+    return segmenter, CacheTranslator(translation_model, translation_tokenizer, device=device, python_version=str(version), redis_cache_server_ip=redis_cache_server_ip, redis_port=redis_port)
+
+
+def _load_legacy_segmenter(seg_config, device, token):
 
     #################################
     # Segmentation model components #
@@ -196,14 +285,8 @@ def load_models(
         revision=seg_config["REVISION"],
         token=token,
     )
-
-    segmentation_tokenizer_file = _cached_first(
-        huggingface_hub.hf_hub_download,
-        repo_id=seg_config["TOKENIZER"],
-        filename="tokenizer.json",
-        token=token,
-    )
-    
+    tokenizer_directory = Path(seg_config["TOKENIZER"])
+    segmentation_tokenizer_file = str(tokenizer_directory / "tokenizer.json") if tokenizer_directory.is_dir() else _cached_first(huggingface_hub.hf_hub_download, repo_id=seg_config["TOKENIZER"], filename="tokenizer.json", token=token)
     segmentation_tokenizer = transformers.PreTrainedTokenizerFast(
         tokenizer_file=segmentation_tokenizer_file,
         unk_token="[UNK]",
@@ -212,38 +295,10 @@ def load_models(
         sep_token="[SEP]",
         mask_token="[MASK]",
     )
-    if device is not None:
-        logger.info(f"Using {device} for models")
-    elif torch.cuda.is_available():
-        logger.info("Using CUDA GPU for models")
-        device = torch.device("cuda:0")
-    else:
-        # MPS recompiles its Metal graph on every T5 decode step, which makes it far slower than
-        # CPU for this workload, so it is not used even when available.
-        logger.info("Using CPU for models")
-        device = torch.device("cpu")
-    segmenter = transformers.pipeline(
+    return transformers.pipeline(
         "token-classification",
         model=segmentation_model,
         tokenizer=segmentation_tokenizer,
         aggregation_strategy="none",
         device=device,
     )
-    #########################################
-    # Sequence translation model components #
-    #########################################
-    
-    translation_model = _cached_first(
-        transformers.T5ForConditionalGeneration.from_pretrained,
-        stmt_config["REPO"],
-        revision=stmt_config["REVISION"],
-        token=token,
-    )
-   
-    translation_tokenizer = _cached_first(
-        transformers.RobertaTokenizer.from_pretrained,
-        stmt_config["TOKENIZER"],
-        token=token,
-    )
-
-    return segmenter, CacheTranslator(translation_model, translation_tokenizer, python_version=version.as_str(), redis_cache_server_ip=redis_cache_server_ip, redis_port=redis_port, device=device)

@@ -1,0 +1,38 @@
+{
+  "description": "Main shared-backbone + per-version LoRA run (v2): backbones on a fresh 100k corpus over Python 3.6-3.15 with no held-out version, then 3.14 and 3.15 statement LoRAs on fresh 100k pools. Read by run_triplesec_lane.py; every input is pinned to a Hub revision before its lane starts.",
+  "approved": true,
+  "approval": "User approved on 2026-11-01: go forward with the v1 method as the main run. Fresh 100k backbone corpus over 3.6-3.15 (same methodology as the 50k, eval v1/v2 sources excluded, 3.15 holdout removed), reuse the v1 tokenizer, 100k train + 1k validation pools per LoRA version, v1 hyperparameters and host layout, then the same v1/v2 eval.",
+  "backbone_versions": ["3.6", "3.7", "3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14", "3.15"],
+  "held_out_version": null,
+  "data_recipe": {
+    "backbone": {"files": 100000, "per_version": {"pypi": 9000, "csn": 1000}, "seed": 20261101,
+                 "rule": "run_local_tokenizer_preparation --versions 3.6..3.15: seeded NAS sampling, canonical-hash training bucket only, every eval v1/v2 source excluded by NAS identity, raw SHA-512 and canonical hash"},
+    "adapter": {"versions": ["3.14", "3.15"], "train_files": 100000, "validation_files": 1000, "seed": 20261102,
+                "rule": "build_adapter_pools: 90/10 PyPI/CSN, validation = canonical-hash reserved bucket, disjoint from the backbone corpus, eval sources and each other"}
+  },
+  "tokenizer": {"repo_id": "syssec-utd/pylingual-shared-tokenizer-v1", "revision": "d23233a4bb237dcc3b1660e46a42f9189eaf0f6c"},
+  "backbone_corpus": {"repo_id": "syssec-utd/pylingual-shared-backbone-corpus-v2", "revision": "3dc69d6e21e5ffa3ce461caf7d7bb791bb2f603a"},
+  "adapter_corpus": {"repo_id": "syssec-utd/pylingual-shared-adapter-corpus-v2", "revision": "95f11e98728b0cf350a684e202af02e5398781f0"},
+  "encoded": {"repo_id": "syssec-utd/pylingual-shared-encoded-v2", "revision": "87be6f40c315dc8d136d0df6690470edb021becd"},
+  "encoded_paths": {"adapter/3.14/statement/train": {"revision": "4000671cd6e647ac26dbc9618f2871e4756ad52b"}, "adapter/3.14/statement/validation": {"revision": "4000671cd6e647ac26dbc9618f2871e4756ad52b"},
+                    "adapter/3.15/statement/train": {"revision": "4000671cd6e647ac26dbc9618f2871e4756ad52b"}, "adapter/3.15/statement/validation": {"revision": "4000671cd6e647ac26dbc9618f2871e4756ad52b"}},
+  "initialization": {"repo_id": "Salesforce/codet5-base", "revision": "02cd2d31bb7c6d0e4d91156167b2de044989c733"},
+  "lanes": {"triplesec1-gpu": ["statement", "lora-3.14"], "triplesec2-gpu": ["segmentation", "lora-3.15"]},
+  "stages": {
+    "statement": {"hub_repo": "syssec-utd/pylingual-shared-statement-v2", "epochs": 2, "batch_size": 24, "accumulation": 3,
+                  "learning_rate": 2e-5, "weight_decay": 0.01, "precision": "fp16", "seed": 20261020, "save_steps": 10000},
+    "mlm": {"hub_repo": "syssec-utd/pylingual-shared-mlm-v2", "epochs": 2, "batch_size": 28, "accumulation": 1,
+            "learning_rate": 5e-5, "weight_decay": 0, "precision": "fp32", "seed": 20261020, "save_steps": 8000},
+    "segmentation": {"hub_repo": "syssec-utd/pylingual-shared-segmentation-v2", "epochs": 2, "batch_size": 28, "accumulation": 1,
+                     "learning_rate": 2e-5, "weight_decay": 0.01, "precision": "fp16", "seed": 20261020, "save_steps": 25000},
+    "lora-3.14": {"hub_repo": "syssec-utd/pylingual-shared-lora-statement-3.14-v2", "epochs": 2, "rank": 64, "batch_size": 36,
+                  "accumulation": 2, "learning_rate": 2e-5, "precision": "fp16", "seed": 20261020, "save_steps": 10000},
+    "lora-3.15": {"hub_repo": "syssec-utd/pylingual-shared-lora-statement-3.15-v2", "epochs": 2, "rank": 64, "batch_size": 36,
+                  "accumulation": 2, "learning_rate": 2e-5, "precision": "fp16", "seed": 20261020, "save_steps": 10000}
+  },
+  "notes": {
+    "same_as_v1": "Hyperparameters, per-device batches and host layout are identical to shared-v1-restart-2026-10-28.json; only the data changed.",
+    "tokenizer": "Reused from v1 (fit on 3.6-3.14). The only 3.15 opcode it lacks, TRACE_RECORD, never occurred in the v1 3.15 data.",
+    "encoding_hosts": "The workstation disk is nearly full, so triplesec1 encodes universal/statement and adapter/3.14, triplesec2 encodes universal/segmentation and adapter/3.15, each from an rsynced source tree (--relocate), and publishes its own paths."
+  }
+}

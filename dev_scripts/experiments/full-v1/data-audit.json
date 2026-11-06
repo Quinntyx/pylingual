@@ -1,0 +1,41 @@
+{
+  "passed": true,
+  "unique_canonical_sources": 50000,
+  "unique_raw_sources": 50000,
+  "versions": [
+    "3.6",
+    "3.7",
+    "3.8",
+    "3.9",
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14",
+    "3.15"
+  ],
+  "source_overlap_with_reserved_benchmark_ids": 0,
+  "train_validation_overlap": 0,
+  "exact_per_version_mix": true,
+  "paired_task_identity": true,
+  "controls_match_version_data": true,
+  "backbone_has_315": false,
+  "data_sha256": {
+    "backbone/statement-train.jsonl": "6e80bf33f457971b6593ffd9449012f7610ac5d6f706c1ffeca9b14b9957f408",
+    "backbone/statement-validation.jsonl": "d895d246aaa7df654af25c0a5c860def150b7cee3f76fa5df6494d0a9dddebe4",
+    "backbone/segmentation-train.jsonl": "e4125470618517f071b8b98c808cef766513746ba96a394cc44a2ae348784bdd",
+    "backbone/segmentation-validation.jsonl": "92a7a051e0c51fc18823d5acc786958316ab484d7a9bec89adf0a2b74a15a60d",
+    "adapter315/statement-train.jsonl": "151e65be4010b1cfac85b795ce25a70f942b686820162ac844c1608c47c6e004",
+    "adapter315/statement-validation.jsonl": "e23f61d6ccb71023a3ece83ad077e525b9e4c9194c0d404b55703c89cd92526b",
+    "adapter315/segmentation-train.jsonl": "feaf597538c7f02143e10f3966d8f82218309b612091c28ef0f543e524e0e952",
+    "adapter315/segmentation-validation.jsonl": "a0ae99274a68ae8a9d5f2222a2a48fb3f65995338fb58bc5cac6f53352bc4d7c",
+    "control314/statement-train.jsonl": "95a77ddc876bcee1c025c50a0f655fc0d64d4783cc349604b649eb98eff36cc5",
+    "control314/statement-validation.jsonl": "8c0502daa66be6178c2d2aecc8afc36b14b5d0a45d4f8a6580fefecc32be1c8c",
+    "control314/segmentation-train.jsonl": "23be8c984dea91e14a242c6b0053dfcd31827eb66a847a936513abb1e87ef1fe",
+    "control314/segmentation-validation.jsonl": "2531649853539b3207fa1d3bbdae457fb4725d4c9889adeb33f74ce7211bffb2",
+    "control315/statement-train.jsonl": "151e65be4010b1cfac85b795ce25a70f942b686820162ac844c1608c47c6e004",
+    "control315/statement-validation.jsonl": "e23f61d6ccb71023a3ece83ad077e525b9e4c9194c0d404b55703c89cd92526b",
+    "control315/segmentation-train.jsonl": "feaf597538c7f02143e10f3966d8f82218309b612091c28ef0f543e524e0e952",
+    "control315/segmentation-validation.jsonl": "a0ae99274a68ae8a9d5f2222a2a48fb3f65995338fb58bc5cac6f53352bc4d7c"
+  }
+}

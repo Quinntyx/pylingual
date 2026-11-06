@@ -1,0 +1,202 @@
+{
+  "format": 2,
+  "complete": true,
+  "seed": 20261016,
+  "examples": 50000,
+  "statement_examples": 50000,
+  "segmentation_examples": 50000,
+  "sampling": "one eligible example per task per unique canonical source file",
+  "source_host": "syssec-adwaith1",
+  "source_roots": [
+    "/data2/data2_pypi_py_list_2023-06-03.txt",
+    "/data2/data2_csn_py_list_2023-06-03.txt"
+  ],
+  "blend": {
+    "pypi": 0.9,
+    "csn": 0.1
+  },
+  "versions": [
+    "3.6",
+    "3.7",
+    "3.8",
+    "3.9",
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14",
+    "3.15"
+  ],
+  "counts": {
+    "3.6": {
+      "train": 4500,
+      "validation": 500
+    },
+    "3.7": {
+      "train": 4500,
+      "validation": 500
+    },
+    "3.8": {
+      "train": 4500,
+      "validation": 500
+    },
+    "3.9": {
+      "train": 4500,
+      "validation": 500
+    },
+    "3.10": {
+      "train": 4500,
+      "validation": 500
+    },
+    "3.11": {
+      "train": 4500,
+      "validation": 500
+    },
+    "3.12": {
+      "train": 4500,
+      "validation": 500
+    },
+    "3.13": {
+      "train": 4500,
+      "validation": 500
+    },
+    "3.14": {
+      "train": 4500,
+      "validation": 500
+    },
+    "3.15": {
+      "train": 4500,
+      "validation": 500
+    }
+  },
+  "corpus_counts": {
+    "3.6": {
+      "train": {
+        "pypi": 4050,
+        "csn": 450
+      },
+      "validation": {
+        "pypi": 450,
+        "csn": 50
+      }
+    },
+    "3.7": {
+      "train": {
+        "pypi": 4050,
+        "csn": 450
+      },
+      "validation": {
+        "pypi": 450,
+        "csn": 50
+      }
+    },
+    "3.8": {
+      "train": {
+        "pypi": 4050,
+        "csn": 450
+      },
+      "validation": {
+        "pypi": 450,
+        "csn": 50
+      }
+    },
+    "3.9": {
+      "train": {
+        "pypi": 4050,
+        "csn": 450
+      },
+      "validation": {
+        "pypi": 450,
+        "csn": 50
+      }
+    },
+    "3.10": {
+      "train": {
+        "pypi": 4050,
+        "csn": 450
+      },
+      "validation": {
+        "pypi": 450,
+        "csn": 50
+      }
+    },
+    "3.11": {
+      "train": {
+        "pypi": 4050,
+        "csn": 450
+      },
+      "validation": {
+        "pypi": 450,
+        "csn": 50
+      }
+    },
+    "3.12": {
+      "train": {
+        "pypi": 4050,
+        "csn": 450
+      },
+      "validation": {
+        "pypi": 450,
+        "csn": 50
+      }
+    },
+    "3.13": {
+      "train": {
+        "pypi": 4050,
+        "csn": 450
+      },
+      "validation": {
+        "pypi": 450,
+        "csn": 50
+      }
+    },
+    "3.14": {
+      "train": {
+        "pypi": 4050,
+        "csn": 450
+      },
+      "validation": {
+        "pypi": 450,
+        "csn": 50
+      }
+    },
+    "3.15": {
+      "train": {
+        "pypi": 4050,
+        "csn": 450
+      },
+      "validation": {
+        "pypi": 450,
+        "csn": 50
+      }
+    }
+  },
+  "failures": {
+    "SyntaxError-3.7": 11,
+    "canonical_duplicate": 56,
+    "compile-3.6": 46,
+    "no-eligible-rows-3.7": 4,
+    "no-eligible-rows-3.6": 1,
+    "extract-3.15": 2,
+    "no-eligible-rows-3.14": 2,
+    "SyntaxError-3.9": 1,
+    "no-eligible-rows-3.12": 2,
+    "no-eligible-rows-3.8": 2,
+    "SyntaxError-3.10": 1,
+    "no-eligible-rows-3.9": 2,
+    "no-eligible-rows-3.15": 3,
+    "SyntaxError-3.6": 11,
+    "SyntaxError-3.13": 2,
+    "filled_quota": 1364,
+    "no-eligible-rows-3.10": 1,
+    "SyntaxError-3.12": 2,
+    "compile-3.8": 1,
+    "extract-3.14": 2,
+    "extract-3.13": 1,
+    "SyntaxError-3.8": 1,
+    "no-eligible-rows-3.11": 1,
+    "SyntaxError-3.14": 1
+  },
+  "candidates": 5580,
+  "compiler_provenance_sha256": "9d8cbcf1dcd8417e2e257e4ab4b4b843da29299bb680ed3dec59db2e19634c26"
+}
