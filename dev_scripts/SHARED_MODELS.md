@@ -1,5 +1,9 @@
 # Shared-backbone PyLingual ablation
 
+> **Historical experiment:** this branch is retained for its implementation and benchmark
+> history, not as the runtime implementation to merge into `dev`. See the
+> [experiment history and no-LoRA successor decision](SHARED_BACKBONE_HISTORY.md).
+
 > **Implementation history:** this guide describes the existing pilot scripts.
 > The [corrected training design](SHARED_TOKENIZER_TRAINING.md) supersedes the
 > training choices below: pooled bytecode-trained tokenizers, normal training
