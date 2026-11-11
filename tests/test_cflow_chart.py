@@ -49,7 +49,7 @@ def tiny_model(rows: list[dict]) -> tuple[ChartParser, object]:
     config.max_stmts, config.max_input_tokens = 512, 1 << 16
     config.skeleton_keywords = KEYWORDS
     config.statement_token_id = tokenizer.convert_tokens_to_ids(STMT_SEP)
-    config.order_buckets, config.order_candidates, config.edge_features = 32, 2, True
+    config.order_buckets, config.order_candidates, config.edge_features, config.loop_edges = 32, 2, True, True
     config.edge_token_ids = [[tokenizer.convert_tokens_to_ids(kind + d) for d in "+-="] for kind in EDGE_KINDS]
     config.mid_token_id = tokenizer.convert_tokens_to_ids(MID)
     config.ref_token_id = tokenizer.convert_tokens_to_ids("<s0>")
@@ -57,6 +57,7 @@ def tiny_model(rows: list[dict]) -> tuple[ChartParser, object]:
     model = ChartParser(config).eval()
     with torch.no_grad():  # trained models score edges; zeros would leave that path untested
         model.edge_weights.normal_()
+        model.loop_edge_weights.normal_()
     return model, tokenizer
 
 

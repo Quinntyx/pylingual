@@ -42,6 +42,7 @@ CHART_DEFAULTS = {
     "order_buckets": 32,  # relative position buckets of the successor head, 0 for none
     "order_candidates": 1,  # orders of the successor head the chart decodes, besides the statement order
     "edge_features": True,  # score the input's edges between statements in the order and block end heads
+    "loop_edges": True,  # if or while by the edges back from the block end (needs edge_features)
     "eval_beams": 1,
 }
 
@@ -176,6 +177,7 @@ def train_chart_model(config: ControlFlowConfiguration, chart: dict):
     model_config.order_buckets = chart["order_buckets"]
     model_config.order_candidates = chart["order_candidates"]
     model_config.edge_features = chart["edge_features"]
+    model_config.loop_edges = chart["loop_edges"]
     model_config.edge_token_ids = [[tokenizer.convert_tokens_to_ids(kind + d) for d in "+-="] for kind in EDGE_KINDS]
     model_config.mid_token_id = tokenizer.convert_tokens_to_ids(MID)
     model_config.ref_token_id = tokenizer.convert_tokens_to_ids(ref(0))  # the references are in order

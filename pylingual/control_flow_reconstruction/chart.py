@@ -39,7 +39,7 @@ class Scores:
     """Log scores of the items for one order of n statements."""
 
     header_end: np.ndarray  # (n, n + 1): the block of the header at position p ends at gap e
-    loop: np.ndarray  # (n, 2): the header at position p is an if (0) or a while (1), for cond headers
+    loop: np.ndarray  # (n, 2) or by block end (n, n + 1, 2): the header at position p is an if (0) or a while (1), for cond headers
     insert: np.ndarray  # (n + 1, len(KEYWORDS)): log odds of a keyword at gap g
     keyword_end: np.ndarray  # (len(BLOCK_KEYWORDS), n + 1, n + 1): the keyword block at gap g ends at gap e
 
@@ -243,19 +243,26 @@ class Chart:
             elif kind == "jump":
                 score = s.insert[:, KEYWORDS.index(kw)]
             else:
-                score = np.full(n, NONE)
-                score[positions] = self.loop_score(positions, kind)
-                if kind != "stmt":
-                    score = score[:, None] + s.header_end
+                own = self.loop_score(positions, kind)
+                if kind == "stmt":
+                    score = np.full(n, NONE)
+                    score[positions] = own
+                else:
+                    score = np.full((n, n + 1), NONE)
+                    score[positions] = (own if own.ndim == 2 else own[:, None]) + s.header_end[positions]
             items.append(Item(kind, kw, after, chain, child, score.astype(np.float32), positions))
         return items
 
     def loop_score(self, positions: np.ndarray, kind: str) -> np.ndarray:
-        """Score of the statements at `positions` as `kind`: only a cond header chooses between if and while."""
+        """
+        Score of the statements at `positions` as `kind`: only a cond header chooses between if and while, by block end
+        when the scores have one.
+        """
         if kind not in ("header", "loop"):
             return np.zeros(len(positions))
         cond = np.array([self.grammar.shapes[self.order[p]].opener == "cond" for p in positions], dtype=bool)
-        return np.where(cond, self.scores.loop[positions, int(kind == "loop")], 0.0)
+        loop = self.scores.loop[positions, ..., int(kind == "loop")]
+        return np.where(cond[:, None] if loop.ndim == 2 else cond, loop, 0.0)
 
     def start_chain(self, x: int) -> int:
         return CHAINS.index("match_empty" if self.contexts[x].kind == "match" else None)

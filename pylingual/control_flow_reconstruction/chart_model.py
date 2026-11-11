@@ -58,6 +58,10 @@ class ChartParser(T5EncoderModel):
         # from the statement before the end to the header) and each keyword's block end (from the statement before
         # the keyword to the statement after the end)
         self.edge_weights = nn.Parameter(torch.zeros(4 + len(BLOCK_KEYWORDS), EDGE_FEATURES)) if getattr(config, "edge_features", False) else None
+        # with `loop_edges`, edges from the statement before a header's block end to the statement after the header
+        # (where 3.12 loops jump back to), for the block end; and that edge and one to the header for whether a cond
+        # header is a while, which then depends on where its block ends
+        self.loop_edge_weights = nn.Parameter(torch.zeros(3, EDGE_FEATURES)) if self.edge_weights is not None and getattr(config, "loop_edges", False) else None
 
     def edges(self, input_ids: torch.Tensor, statement: torch.Tensor, n: int) -> torch.Tensor | None:
         """(batch, statements, statements, EDGE_FEATURES): whether a statement has an edge of each kind to another."""
@@ -83,11 +87,20 @@ class ChartParser(T5EncoderModel):
         ordered = ordered[rows[..., None], torch.arange(order.shape[1], device=order.device)[None, :, None], order.clamp(min=0)[:, None, :]]
         return F.pad(ordered, (0, 0, 1, 1, 1, 1))
 
-    def header_edges(self, padded: torch.Tensor) -> torch.Tensor:
-        """(batch, n, n + 1) edge scores of the header at each position ending at each gap."""
+    def header_edges(self, padded: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None]:
+        """
+        (batch, n, n + 1) edge scores of the header at each position ending at each gap: for the block end, and (with
+        loop_edges, else None) for the header being a while.
+        """
         n = padded.shape[1] - 2
         w = self.edge_weights.to(padded.dtype)
-        return padded[:, 1 : n + 1, 1:] @ w[2] + (padded[:, : n + 1, 1 : n + 1] @ w[3]).transpose(1, 2)
+        to_header = padded[:, : n + 1, 1 : n + 1].transpose(1, 2)  # from the statement before the end gap
+        end = padded[:, 1 : n + 1, 1:] @ w[2] + to_header @ w[3]
+        if self.loop_edge_weights is None:
+            return end, None
+        lw = self.loop_edge_weights.to(padded.dtype)
+        to_body = padded[:, : n + 1, 2:].transpose(1, 2)
+        return end + to_body @ lw[0], to_body @ lw[1] + to_header @ lw[2]
 
     def offset_buckets(self, offsets: torch.Tensor) -> torch.Tensor:
         """Buckets of statement offsets like T5's relative positions: one each up to 8 away, then logarithmic up to 256."""
@@ -158,6 +171,7 @@ class ChartParser(T5EncoderModel):
         successor[rows.expand_as(order)[is_last], order[is_last] + 1] = n
         loss = F.cross_entropy(self.successors(vectors, counts, edges).flatten(0, 1), successor.flatten(), ignore_index=-100)
         padded = None if edges is None else self.padded(edges, order)
+        loop_end = None
 
         gap = self.gaps(vectors[rows, order.clamp(min=0)], counts)
         close = self.close(gap)
@@ -165,7 +179,8 @@ class ChartParser(T5EncoderModel):
         # header blocks: gap p + 1 holds the header at p
         scores = self.open(gap[:, 1:] + self.opener[0]) @ close.transpose(1, 2)
         if padded is not None:
-            scores = scores + self.header_edges(padded.to(scores.dtype))
+            end, loop_end = self.header_edges(padded.to(scores.dtype))
+            scores = scores + end
         after = torch.arange(n + 1, device=counts.device)[None] > torch.arange(n, device=counts.device)[:, None]
         scores = scores.masked_fill(~(after[None] & valid_end[:, None]), MASKED)
         if (header_end != -100).any():  # a batch without headers has no header loss (not NaN)
@@ -182,6 +197,8 @@ class ChartParser(T5EncoderModel):
         logits = self.insert(gap)
         loss = loss + F.binary_cross_entropy_with_logits(logits[valid_end], insert[valid_end].to(logits.dtype))
         logits = self.loop(vectors[rows, order.clamp(min=0)])[..., 0]
+        if loop_end is not None:  # at the gold block end
+            logits = logits + loop_end.gather(2, header_end.clamp(min=0)[..., None])[..., 0].to(logits.dtype)
         if (loop != -100).any():
             loss = loss + F.binary_cross_entropy_with_logits(logits[loop != -100], loop[loop != -100].to(logits.dtype))
         return {"loss": loss}
@@ -193,15 +210,18 @@ class ChartParser(T5EncoderModel):
         close = self.close(gap)
         gaps = torch.arange(n + 1, device=vectors.device)
         header = self.open(gap[1:] + self.opener[0]) @ close.T
+        z = self.loop(vectors[order])[:, 0]
         if edges is not None:
             padded = self.padded(edges[None], torch.tensor([order], device=vectors.device))
-            header = header + self.header_edges(padded)[0]
+            end, loop_end = self.header_edges(padded)
+            header = header + end[0]
+            if loop_end is not None:  # if or while by block end
+                z = z[:, None] + loop_end[0]
         header = header.masked_fill(gaps[None] <= gaps[:n, None], float("-inf")).log_softmax(-1)
         keyword = torch.einsum("gkd,ed->kge", self.open(gap[:, None] + self.opener[1:]), close)
         if edges is not None:
             keyword = keyword + torch.einsum("get,kt->kge", padded[0, : n + 1, 1:], self.edge_weights[4:])
         keyword = keyword.masked_fill(gaps[None, None] <= gaps[None, :, None], float("-inf")).log_softmax(-1).nan_to_num(nan=NONE, neginf=NONE)
-        z = self.loop(vectors[order])[:, 0]
         loop = F.logsigmoid(torch.stack([-z, z], -1))
         return Scores(*(x.float().cpu().numpy() for x in (header, loop, self.insert(gap), keyword)))
 
