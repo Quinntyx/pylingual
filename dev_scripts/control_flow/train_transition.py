@@ -182,6 +182,7 @@ def train_transition_model(config: ControlFlowConfiguration, public: bool = Fals
         metric_for_best_model="eval_loss",
         prediction_loss_only=True,
         save_total_limit=2,
+        save_only_model=True,  # the checkpoints only pick the best epoch; optimizer states would double their size
         remove_unused_columns=False,  # the collator walks the grammar over the gold skeleton
         dataloader_num_workers=min(4, os.cpu_count() or 1),
         report_to="tensorboard",
