@@ -64,39 +64,55 @@ class BudgetBatches(torch.utils.data.Sampler):
     """
     Batches of rows of similar size, of at most `rows` rows, `rows * TOKENS_PER_ROW` padded input tokens and
     `rows * CELLS_PER_ROW` padded decoder step x statement cells (the size of the pointer logits), so the few very large
-    code objects train in small batches instead of running out of memory. The batches are fixed; their order is
-    shuffled each epoch (from `seed` and the epoch) when `shuffle`.
+    code objects train in small batches instead of running out of memory.
+
+    When `shuffle`, each epoch (seeded by `seed` and the epoch) splits the shuffled rows into megabatches of MEGABATCH
+    batches, sorts each by size and cuts it into batches, like group_by_length; batches of mixed sizes train better than
+    batches cut from all rows sorted by size. The batch count varies a little between epochs; the trainer runs
+    `len(self)` steps each epoch. Otherwise the batches are cut from all rows sorted by size.
     """
 
     TOKENS_PER_ROW = 512
     CELLS_PER_ROW = 1 << 16
+    MEGABATCH = 50
 
     def __init__(self, dataset, rows: int, shuffle: bool, seed: int):
-        lengths, n_stmts, steps = (np.array(dataset[c]) for c in ("length", "n_stmts", "steps"))
-        ties = np.random.default_rng(seed).permutation(len(lengths))
-        order = np.lexsort((ties, steps, n_stmts, lengths))[::-1]  # largest first
-        self.batches, batch, size = [], [], (0, 0, 0)
+        self.sizes = np.stack([np.array(dataset[c]) for c in ("length", "n_stmts", "steps")], 1)
+        self.rows, self.shuffle, self.seed, self.epoch = rows, shuffle, seed, 0
+        self.count = len(self.batches(0))
+
+    def cut(self, order: np.ndarray) -> list[list[int]]:
+        """Batches of `order`, largest rows first."""
+        order = order[np.lexsort(self.sizes[order].T[[2, 1, 0]])[::-1]]
+        batches, batch, size = [], [], np.zeros(3, dtype=np.int64)
         for i in order.tolist():
-            grown = tuple(max(a, b) for a, b in zip(size, (lengths[i], n_stmts[i], steps[i])))
+            grown = np.maximum(size, self.sizes[i])
             k = len(batch) + 1
-            if batch and (k > rows or k * grown[0] > rows * self.TOKENS_PER_ROW or k * grown[1] * grown[2] > rows * self.CELLS_PER_ROW):
-                self.batches.append(batch)
-                batch, grown = [], (lengths[i], n_stmts[i], steps[i])
+            if batch and (k > self.rows or k * grown[0] > self.rows * self.TOKENS_PER_ROW or k * grown[1] * grown[2] > self.rows * self.CELLS_PER_ROW):
+                batches.append(batch)
+                batch, grown = [], self.sizes[i]
             batch.append(i)
             size = grown
-        self.batches.append(batch)
-        self.shuffle, self.seed, self.epoch = shuffle, seed, 0
+        return batches + [batch]
+
+    def batches(self, epoch: int) -> list[list[int]]:
+        if not self.shuffle:
+            return self.cut(np.arange(len(self.sizes)))
+        rng = np.random.default_rng((self.seed, epoch))
+        order, mega = rng.permutation(len(self.sizes)), self.rows * self.MEGABATCH
+        batches = [b for start in range(0, len(order), mega) for b in self.cut(order[start : start + mega])]
+        return [batches[i] for i in rng.permutation(len(batches))]
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
 
     def __len__(self):
-        return len(self.batches)
+        return self.count
 
     def __iter__(self):
-        order = np.random.default_rng((self.seed, self.epoch)).permutation(len(self.batches)) if self.shuffle else range(len(self.batches))
+        batches = self.batches(self.epoch)
         self.epoch += 1  # in case the trainer does not set it
-        yield from (self.batches[i] for i in order)
+        yield from batches
 
 
 class BudgetTrainer(Trainer):
