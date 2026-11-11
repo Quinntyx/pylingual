@@ -240,12 +240,29 @@ class TransitionPredictor(ControlFlowPredictor):
     """
     Statement encoder and grammar action decoder (see control_flow_reconstruction/transition.py)
 
+    There is no template fallback: the model runs on inputs up to LIMIT_SCALE times the limits it was trained with, and
+    every request it cannot predict (too large, out of memory, failed) gets its statements in order, with the blocks
+    BlockGrammar.complete gives them.
+
     :param model: The loaded TransitionModel, its config holds the limits it was trained with
     """
 
+    LIMIT_SCALE = 4
+
     def __init__(self, model, device="cpu"):
-        super().__init__(model.config.max_stmts, model.config.max_input_tokens)
+        super().__init__(self.LIMIT_SCALE * model.config.max_stmts, self.LIMIT_SCALE * model.config.max_input_tokens)
         self.model = model.to(device).eval()
+
+    def __call__(self, requests: list[CflowRequest | None], num_beams: int = 1, check_timeout: callable = None) -> list[list[list[str]] | None]:
+        results = super().__call__(requests, num_beams, check_timeout)
+        for i, request in enumerate(requests):
+            if results[i] is None and request is not None:
+                try:
+                    grammar = request.grammar()
+                    results[i] = [grammar.complete(grammar.start())]
+                except Exception as e:  # inconsistent shapes: no skeleton fits
+                    logger.info(f"No in-order skeleton for a code object ({e!r})")
+        return results
 
     @classmethod
     def from_pretrained(cls, repo: str, revision: str | None = None, token=False, device="cpu") -> TransitionPredictor:
@@ -254,7 +271,14 @@ class TransitionPredictor(ControlFlowPredictor):
         return cls(_cached_first(TransitionModel.from_pretrained, repo, revision=revision, token=token), device=device)
 
     def _generate(self, batch: list[CflowRequest], num_beams: int) -> list[list[list[str]]]:
-        return self.model.generate(batch, num_beams)
+        try:
+            return self.model.generate(batch, num_beams)
+        except torch.OutOfMemoryError:
+            if len(batch) == 1:
+                return [[]]  # in order, see __call__
+        torch.cuda.empty_cache()  # outside the except block, so the failed batch's tensors can be freed
+        half = len(batch) // 2
+        return self._generate(batch[:half], num_beams) + self._generate(batch[half:], num_beams)
 
 
 # ARCH of a CONTROL_FLOW_MODEL entry -> its predictor

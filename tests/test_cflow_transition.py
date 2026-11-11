@@ -39,7 +39,7 @@ def test_save_and_load(tmp_path):
     model.config.max_stmts = 100
     model.save_pretrained(tmp_path)
     loaded = PREDICTORS["transition"].from_pretrained(str(tmp_path))
-    assert loaded.max_stmts == 100 and loaded.model.config.vocab == model.config.vocab
+    assert loaded.model.config.max_stmts == 100 and loaded.model.config.vocab == model.config.vocab
     request = CflowRequest.from_row({"input": "| <s0> K_cond POP_JUMP_IF_FALSE f+ <s2> | <s1> K_stmt | <s2> K_stmt RETURN_CONST nf", "shapes": "cond stmt stmt", "version": "3.12"})
     assert loaded([request], num_beams=4) == TransitionPredictor(model)([request], num_beams=4)
 
@@ -55,3 +55,12 @@ def test_decompiler_with_transition_model(tmp_path):
     assert d.cflow_results[f] and all(d.cflow_requests[f].grammar().accepts(s) for s in d.cflow_results[f])
     assert d.equivalence_results and all(r.success for r in d.equivalence_results)
     assert not isinstance(cft_of_f(d), SkeletonTemplate) or d.cflow_requests[f].grammar().accepts(cft_of_f(d).tokens)
+
+
+def test_in_order_past_the_limits():
+    """Requests the model cannot take get their statements in order, so every request has a skeleton."""
+    model = tiny_model()
+    model.config.max_stmts = 0
+    request = CflowRequest.from_row({"input": "| <s0> K_cond POP_JUMP_IF_FALSE f+ <s2> | <s1> K_stmt | <s2> K_stmt RETURN_CONST nf", "shapes": "cond stmt stmt", "version": "3.12"})
+    grammar = request.grammar()
+    assert TransitionPredictor(model)([request, None], num_beams=2) == [[grammar.complete(grammar.start())], None]
