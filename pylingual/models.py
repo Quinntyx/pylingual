@@ -273,11 +273,12 @@ class ChartPredictor(ControlFlowPredictor):
             return results
         encoded = self.tokenizer([" ".join(batch[i].tokens) for i in todo], return_tensors="pt", padding=True).to(self.device)
         with torch.no_grad():
-            vectors, counts = self.model.statements(encoded.input_ids, encoded.attention_mask)
-            successors = self.model.successors(vectors, counts)
-            for i, v, s in zip(todo, vectors, successors):
+            vectors, counts, edges = self.model.statements(encoded.input_ids, encoded.attention_mask)
+            successors = self.model.successors(vectors, counts, edges)
+            for j, (i, s) in enumerate(zip(todo, successors)):
+                n = batch[i].n
                 try:
-                    results[i] = self.model.skeletons(batch[i], v[: batch[i].n], s, num_beams)
+                    results[i] = self.model.skeletons(batch[i], vectors[j, :n], None if edges is None else edges[j, :n, :n], s, num_beams)
                 except (TimeoutError, KeyboardInterrupt):
                     raise
                 except Exception as e:

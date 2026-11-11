@@ -10,8 +10,8 @@ from transformers import T5Config
 from dataset_generation.bytecode2cflow import make_examples
 from pylingual.control_flow_reconstruction import block_grammar
 from pylingual.control_flow_reconstruction.chart import KEYWORDS, Chart, Scores, decode_order, gold_items, oracle_scores, order_beams, order_score
-from pylingual.control_flow_reconstruction.chart_model import ChartParser
-from pylingual.control_flow_reconstruction.model_view import STMT_SEP, CflowRequest
+from pylingual.control_flow_reconstruction.chart_model import EDGE_KINDS, ChartParser
+from pylingual.control_flow_reconstruction.model_view import MID, STMT_SEP, CflowRequest
 from pylingual.control_flow_reconstruction.skeleton import BLOCK_KEYWORDS
 from pylingual.editable_bytecode import PYCFile
 from pylingual.models import PREDICTORS, ChartPredictor
@@ -49,8 +49,15 @@ def tiny_model(rows: list[dict]) -> tuple[ChartParser, object]:
     config.max_stmts, config.max_input_tokens = 512, 1 << 16
     config.skeleton_keywords = KEYWORDS
     config.statement_token_id = tokenizer.convert_tokens_to_ids(STMT_SEP)
+    config.order_buckets, config.order_candidates, config.edge_features = 32, 2, True
+    config.edge_token_ids = [[tokenizer.convert_tokens_to_ids(kind + d) for d in "+-="] for kind in EDGE_KINDS]
+    config.mid_token_id = tokenizer.convert_tokens_to_ids(MID)
+    config.ref_token_id = tokenizer.convert_tokens_to_ids("<s0>")
     torch.manual_seed(0)
-    return ChartParser(config).eval(), tokenizer
+    model = ChartParser(config).eval()
+    with torch.no_grad():  # trained models score edges; zeros would leave that path untested
+        model.edge_weights.normal_()
+    return model, tokenizer
 
 
 @pytest.mark.filterwarnings("ignore::SyntaxWarning")
@@ -147,3 +154,20 @@ def test_decompiler_with_chart_config(tmp_path):
     f = [bc.codeobj.co_name for bc in d.ordered_bytecodes].index("f")
     assert d.cflow_results[f] and all(d.cflow_requests[f].grammar().accepts(s) for s in d.cflow_results[f])
     assert d.equivalence_results and all(r.success for r in d.equivalence_results)
+
+
+@pytest.mark.filterwarnings("ignore::SyntaxWarning")
+def test_edges_follow_the_input(tmp_path):
+    """The edge features hold each (statement, target, kind, inside) of the input's references."""
+    rows = fixture_rows("3.12", tmp_path, ["Exception", "Loop"])
+    model, tokenizer = tiny_model(rows)
+    for row in rows:
+        tokens, expected, statement = row["input"].split(), set(), -1
+        for i, token in enumerate(tokens):
+            statement += token == STMT_SEP
+            if token[:1] in EDGE_KINDS and token[1:] in ("+", "-", "=") and i + 1 < len(tokens):
+                inside = i + 2 < len(tokens) and tokens[i + 2] == MID
+                expected.add((statement, int(tokens[i + 1][2:-1]), EDGE_KINDS.index(token[0]) + len(EDGE_KINDS) * inside))
+        encoded = tokenizer(row["input"], return_tensors="pt")
+        _, _, edges = model.statements(encoded.input_ids, encoded.attention_mask)
+        assert {tuple(x) for x in edges[0].nonzero().tolist()} == expected

@@ -26,9 +26,9 @@ from transformers import T5Config
 
 from pylingual.control_flow_reconstruction.block_grammar import Shape
 from pylingual.control_flow_reconstruction.chart import KEYWORDS, decode_order, gold_items
-from pylingual.control_flow_reconstruction.chart_model import ChartParser
-from pylingual.control_flow_reconstruction.model_view import STMT_SEP, CflowRequest
-from pylingual.control_flow_reconstruction.skeleton import BLOCK_KEYWORDS
+from pylingual.control_flow_reconstruction.chart_model import EDGE_KINDS, ChartParser
+from pylingual.control_flow_reconstruction.model_view import MID, STMT_SEP, CflowRequest
+from pylingual.control_flow_reconstruction.skeleton import BLOCK_KEYWORDS, ref
 from pylingual.models import ChartPredictor
 
 LABELS = ["order", "header_end", "keyword_end", "insert", "loop"]
@@ -40,6 +40,8 @@ CHART_DEFAULTS = {
     "weight_decay": 0.01,
     "dropout": 0.1,
     "order_buckets": 32,  # relative position buckets of the successor head, 0 for none
+    "order_candidates": 1,  # orders of the successor head the chart decodes, besides the statement order
+    "edge_features": True,  # score the input's edges between statements in the order and block end heads
     "eval_beams": 1,
 }
 
@@ -122,8 +124,7 @@ def evaluate(predictor: ChartPredictor, rows, num_beams: int = 1) -> dict:
         greedy_orders += bool(prediction) and gold_items(prediction[0]).order == gold_order
         encoded = predictor.tokenizer(row["input"], return_tensors="pt").to(predictor.device)
         with torch.no_grad():
-            vectors, counts = predictor.model.statements(encoded.input_ids, encoded.attention_mask)
-            successors = predictor.model.successors(vectors, counts)[0].float().cpu().numpy()
+            successors = predictor.model.successors(*predictor.model.statements(encoded.input_ids, encoded.attention_mask))[0].float().cpu().numpy()
         orders += decode_order(successors, request.shapes) == gold_order
     n = max(len(rows), 1)
     return {
@@ -173,6 +174,11 @@ def train_chart_model(config: ControlFlowConfiguration, chart: dict):
     model_config.skeleton_keywords = [k for k in KEYWORDS if any(k in target.split() for target in dataset["train"]["target"])]
     model_config.statement_token_id = tokenizer.convert_tokens_to_ids(STMT_SEP)
     model_config.order_buckets = chart["order_buckets"]
+    model_config.order_candidates = chart["order_candidates"]
+    model_config.edge_features = chart["edge_features"]
+    model_config.edge_token_ids = [[tokenizer.convert_tokens_to_ids(kind + d) for d in "+-="] for kind in EDGE_KINDS]
+    model_config.mid_token_id = tokenizer.convert_tokens_to_ids(MID)
+    model_config.ref_token_id = tokenizer.convert_tokens_to_ids(ref(0))  # the references are in order
     model = ChartParser(model_config).to(device)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"trainable parameters: {n_params}", flush=True)
