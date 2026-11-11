@@ -8,6 +8,7 @@ from datetime import timedelta
 import click
 import numpy as np
 import torch
+import transformers
 from ControlFlowConfiguration import ControlFlowConfiguration, parse_control_flow_config_json
 from train_cflow import load_cflow_dataset
 from transformers import Trainer, TrainingArguments
@@ -57,6 +58,58 @@ def collate(rows: list[dict]) -> dict[str, torch.Tensor]:
     return {k: torch.from_numpy(v) for k, v in batch.items()}
 
 
+class BudgetBatches(torch.utils.data.Sampler):
+    """
+    Batches of rows of similar size, of at most `rows` rows, `rows * TOKENS_PER_ROW` padded input tokens and
+    `rows * CELLS_PER_ROW` padded decoder step x statement cells (the size of the pointer logits), so the few very large
+    code objects train in small batches instead of running out of memory. The batches are fixed; their order is
+    shuffled each epoch (from `seed` and the epoch) when `shuffle`.
+    """
+
+    TOKENS_PER_ROW = 512
+    CELLS_PER_ROW = 1 << 16
+
+    def __init__(self, dataset, rows: int, shuffle: bool, seed: int):
+        lengths, n_stmts, steps = (np.array(dataset[c]) for c in ("length", "n_stmts", "steps"))
+        ties = np.random.default_rng(seed).permutation(len(lengths))
+        order = np.lexsort((ties, steps, n_stmts, lengths))[::-1]  # largest first
+        self.batches, batch, size = [], [], (0, 0, 0)
+        for i in order.tolist():
+            grown = tuple(max(a, b) for a, b in zip(size, (lengths[i], n_stmts[i], steps[i])))
+            k = len(batch) + 1
+            if batch and (k > rows or k * grown[0] > rows * self.TOKENS_PER_ROW or k * grown[1] * grown[2] > rows * self.CELLS_PER_ROW):
+                self.batches.append(batch)
+                batch, grown = [], (lengths[i], n_stmts[i], steps[i])
+            batch.append(i)
+            size = grown
+        self.batches.append(batch)
+        self.shuffle, self.seed, self.epoch = shuffle, seed, 0
+
+    def set_epoch(self, epoch: int):
+        self.epoch = epoch
+
+    def __len__(self):
+        return len(self.batches)
+
+    def __iter__(self):
+        order = np.random.default_rng((self.seed, self.epoch)).permutation(len(self.batches)) if self.shuffle else range(len(self.batches))
+        self.epoch += 1  # in case the trainer does not set it
+        yield from (self.batches[i] for i in order)
+
+
+class BudgetTrainer(Trainer):
+    def _budget_loader(self, dataset, shuffle: bool):
+        sampler = BudgetBatches(dataset, self.args.per_device_train_batch_size, shuffle, self.args.seed)
+        loader = torch.utils.data.DataLoader(dataset, batch_sampler=sampler, collate_fn=self.data_collator, num_workers=self.args.dataloader_num_workers, pin_memory=self.args.dataloader_pin_memory)
+        return self.accelerator.prepare(loader)
+
+    def get_train_dataloader(self):
+        return self._budget_loader(self.train_dataset, shuffle=True)
+
+    def get_eval_dataloader(self, eval_dataset=None):
+        return self._budget_loader(eval_dataset if eval_dataset is not None else self.eval_dataset, shuffle=False)
+
+
 def exact_match(predictor: TransitionPredictor, test) -> dict:
     """Share of greedy skeletons equal to the gold skeleton, by statement count."""
     predictions = predictor([CflowRequest.from_row(row) for row in test])
@@ -72,17 +125,18 @@ def exact_match(predictor: TransitionPredictor, test) -> dict:
     }
 
 
-def train_transition_model(config: ControlFlowConfiguration, public: bool = False):
+def train_transition_model(config: ControlFlowConfiguration, public: bool = False, seed: int = 42):
     dataset = load_cflow_dataset(config)
     vocab = build_vocab(dataset["train"]["input"])
     index = {t: i for i, t in enumerate(vocab)}
 
     def tokenize(row):
         ids, refs, stmt_pos = encode_input(row["input"].split(), index)
-        return {"input_ids": ids, "refs": refs, "stmt_pos": stmt_pos, "length": len(ids)}
+        return {"input_ids": ids, "refs": refs, "stmt_pos": stmt_pos, "length": len(ids), "steps": len(row["target"].split()) + 1}
 
     tokenized = dataset.map(tokenize, remove_columns=["input", "file"])
 
+    transformers.set_seed(seed)  # the model is built before the trainer seeds
     params = config.model_parameters
     model = TransitionModel(TransitionConfig(
         vocab=vocab, d_model=params.d_model, layers=params.layers, heads=params.heads, d_ff=params.d_ff,
@@ -100,6 +154,7 @@ def train_transition_model(config: ControlFlowConfiguration, public: bool = Fals
         warmup_steps=0.05,
         weight_decay=0.01,
         max_grad_norm=1.0,
+        seed=seed,
         # emulated bf16 has no memory efficient attention kernel
         bf16=torch.cuda.is_available() and torch.cuda.is_bf16_supported(including_emulation=False),
         fp16=torch.cuda.is_available() and not torch.cuda.is_bf16_supported(including_emulation=False),
@@ -109,7 +164,6 @@ def train_transition_model(config: ControlFlowConfiguration, public: bool = Fals
         metric_for_best_model="eval_loss",
         prediction_loss_only=True,
         save_total_limit=2,
-        train_sampling_strategy="group_by_length",
         remove_unused_columns=False,  # the collator walks the grammar over the gold skeleton
         dataloader_num_workers=min(4, os.cpu_count() or 1),
         report_to="tensorboard",
@@ -119,7 +173,7 @@ def train_transition_model(config: ControlFlowConfiguration, public: bool = Fals
         hub_model_id=config.model_repo_name,
         hub_private_repo=not public,
     )
-    trainer = Trainer(model=model, args=train_args, data_collator=collate, train_dataset=tokenized["train"], eval_dataset=tokenized["validation"])
+    trainer = BudgetTrainer(model=model, args=train_args, data_collator=collate, train_dataset=tokenized["train"], eval_dataset=tokenized["validation"])
 
     start = time.time()
     trainer.train(resume_from_checkpoint=get_last_checkpoint(str(model_dir)) if model_dir.is_dir() else None)
@@ -136,10 +190,11 @@ def train_transition_model(config: ControlFlowConfiguration, public: bool = Fals
 
 @click.command(help="Training script for the transition control flow model given a control flow json.")
 @click.argument("json_path", type=str)
+@click.option("--seed", default=42, help="Seed of the initialization, dropout and batch order")
 @click.option("--public", is_flag=True, default=False, help="Make uploaded HuggingFace repos public (default: private)")
-def main(json_path: str, public: bool):
+def main(json_path: str, seed: int, public: bool):
     control_flow_config = parse_control_flow_config_json(pathlib.Path(json_path))
-    train_transition_model(control_flow_config, public)
+    train_transition_model(control_flow_config, public, seed)
 
 
 if __name__ == "__main__":
