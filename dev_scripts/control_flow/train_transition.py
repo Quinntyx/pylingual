@@ -152,7 +152,7 @@ def train_transition_model(config: ControlFlowConfiguration, public: bool = Fals
         ids, refs, stmt_pos = encode_input(row["input"].split(), index)
         return {"input_ids": ids, "refs": refs, "stmt_pos": stmt_pos, "length": len(ids), "steps": len(row["target"].split()) + 1}
 
-    tokenized = dataset.map(tokenize, remove_columns=["input", "file"])
+    tokenized = dataset.map(tokenize, remove_columns=["input", "file"], keep_in_memory=True)  # no 190 MB cache file per run
 
     transformers.set_seed(seed)  # the model is built before the trainer seeds
     params = config.model_parameters
