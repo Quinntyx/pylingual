@@ -241,7 +241,10 @@ class ChartParser(T5EncoderModel):
             orders.append((order_score(log_probs, in_order), in_order))
         keywords = [KEYWORDS.index(k) for k in self.config.skeleton_keywords]
         found = []
-        for score, order in orders:
+        for score, order in sorted(orders, key=lambda o: -o[0]):
+            # the items' log probability is at most 0, so an order less likely than the beams found so far adds none
+            if len(found) >= num_beams and sorted(s for s, _ in found)[-num_beams] >= score:
+                break
             scores = self.scores(vectors, edges, order)
             # insert holds log odds: a skeleton's probability has every keyword it leaves out, too
             score += -float(np.logaddexp(0, scores.insert[:, keywords]).sum())

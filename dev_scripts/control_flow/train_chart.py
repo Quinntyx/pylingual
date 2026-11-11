@@ -40,7 +40,7 @@ CHART_DEFAULTS = {
     "weight_decay": 0.01,
     "dropout": 0.1,
     "order_buckets": 32,  # relative position buckets of the successor head, 0 for none
-    "order_candidates": 1,  # orders of the successor head the chart decodes, besides the statement order
+    "order_candidates": 8,  # orders of the successor head the chart decodes, besides the statement order
     "edge_features": True,  # score the input's edges between statements in the order and block end heads
     "loop_edges": True,  # if or while by the edges back from the block end (needs edge_features)
     "eval_beams": 1,
