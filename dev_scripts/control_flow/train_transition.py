@@ -29,7 +29,9 @@ def build_vocab(texts) -> list[str]:
 
 def collate(rows: list[dict]) -> dict[str, torch.Tensor]:
     """Encoder inputs, and the decoder features, allowed actions and action of each step of the gold skeletons."""
-    n, length = max(row["n_stmts"] for row in rows), -(-max(row["length"] for row in rows) // ALIGN) * ALIGN
+    # at least 2 statement slots: with 1, the pointer's backward is an outer product bmm, which torch 2.14 runs as a
+    # triton kernel that needs a C compiler
+    n, length = max(2, *(row["n_stmts"] for row in rows)), -(-max(row["length"] for row in rows) // ALIGN) * ALIGN
     steps = []
     for row in rows:
         grammar = BlockGrammar([Shape.parse(s) for s in row["shapes"].split()], row["version"])
