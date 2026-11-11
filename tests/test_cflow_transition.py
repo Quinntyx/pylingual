@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+
+import numpy as np
 import pytest
 import torch
 
@@ -64,3 +68,26 @@ def test_in_order_past_the_limits():
     request = CflowRequest.from_row({"input": "| <s0> K_cond POP_JUMP_IF_FALSE f+ <s2> | <s1> K_stmt | <s2> K_stmt RETURN_CONST nf", "shapes": "cond stmt stmt", "version": "3.12"})
     grammar = request.grammar()
     assert TransitionPredictor(model)([request, None], num_beams=2) == [[grammar.complete(grammar.start())], None]
+
+
+def test_budget_batches():
+    """Every row is in one batch of each epoch, batches keep to the budget, and epochs differ."""
+    sys.path.insert(0, str(Path(__file__).parents[1] / "dev_scripts" / "control_flow"))
+    from train_transition import BudgetBatches
+
+    rng = np.random.default_rng(0)
+    n_stmts = rng.integers(1, 40, 2000)
+    n_stmts[:5] = 2000  # a few huge code objects
+    rows = {"n_stmts": n_stmts, "length": 4 * n_stmts, "steps": 3 * n_stmts}
+    sampler = BudgetBatches(rows, rows=16, shuffle=True, seed=0)
+    epochs = [list(sampler) for _ in range(2)]
+    for batches in epochs:
+        assert sorted(i for b in batches for i in b) == list(range(2000))
+        assert abs(len(batches) - len(sampler)) <= len(sampler) // 10
+        for b in batches:
+            assert len(b) <= 16
+            if len(b) > 1:
+                assert len(b) * max(rows["length"][b]) <= 16 * BudgetBatches.TOKENS_PER_ROW
+                assert len(b) * max(n_stmts[b]) * max(rows["steps"][b]) <= 16 * BudgetBatches.CELLS_PER_ROW
+    assert epochs[0] != epochs[1]
+    assert [b for b in BudgetBatches(rows, rows=16, shuffle=True, seed=0)] == epochs[0]
