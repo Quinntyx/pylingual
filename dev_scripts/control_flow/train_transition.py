@@ -127,7 +127,7 @@ def exact_match(predictor: TransitionPredictor, test) -> dict:
     }
 
 
-def train_transition_model(config: ControlFlowConfiguration, public: bool = False, seed: int = 42):
+def train_transition_model(config: ControlFlowConfiguration, public: bool = False, seed: int = 42, **transition_parameters):
     dataset = load_cflow_dataset(config)
     vocab = build_vocab(dataset["train"]["input"])
     index = {t: i for i, t in enumerate(vocab)}
@@ -142,7 +142,7 @@ def train_transition_model(config: ControlFlowConfiguration, public: bool = Fals
     params = config.model_parameters
     model = TransitionModel(TransitionConfig(
         vocab=vocab, d_model=params.d_model, layers=params.layers, heads=params.heads, d_ff=params.d_ff,
-        max_stmts=config.max_stmts, max_input_tokens=config.max_input_tokens,
+        max_stmts=config.max_stmts, max_input_tokens=config.max_input_tokens, **transition_parameters,
     ))  # fmt: skip
 
     model_dir = config.model_dir
@@ -193,10 +193,12 @@ def train_transition_model(config: ControlFlowConfiguration, public: bool = Fals
 @click.command(help="Training script for the transition control flow model given a control flow json.")
 @click.argument("json_path", type=str)
 @click.option("--seed", default=42, help="Seed of the initialization, dropout and batch order")
+@click.option("--products", is_flag=True, help="Feed the decoder the product of the opening and first unplaced statement vectors")
+@click.option("--decoder-layers", default=2, help="LSTM layers of the decoder")
 @click.option("--public", is_flag=True, default=False, help="Make uploaded HuggingFace repos public (default: private)")
-def main(json_path: str, seed: int, public: bool):
+def main(json_path: str, seed: int, products: bool, decoder_layers: int, public: bool):
     control_flow_config = parse_control_flow_config_json(pathlib.Path(json_path))
-    train_transition_model(control_flow_config, public, seed)
+    train_transition_model(control_flow_config, public, seed, products=products, decoder_layers=decoder_layers)
 
 
 if __name__ == "__main__":

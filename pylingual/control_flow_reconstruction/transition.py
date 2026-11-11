@@ -110,11 +110,12 @@ def sinusoid(x: torch.Tensor, d: int) -> torch.Tensor:
 class TransitionConfig(transformers.PretrainedConfig):
     model_type = "cflow_transition"
 
-    def __init__(self, vocab: list[str] | None = None, d_model=256, layers=4, heads=8, d_ff=1024, decoder_layers=2, dropout=0.1, max_stmts=512, max_input_tokens=2048, **kwargs):
+    def __init__(self, vocab: list[str] | None = None, d_model=256, layers=4, heads=8, d_ff=1024, decoder_layers=2, dropout=0.1, max_stmts=512, max_input_tokens=2048, products=False, **kwargs):
         self.vocab = vocab or list(SPECIAL)
         self.d_model, self.layers, self.heads, self.d_ff = d_model, layers, heads, d_ff
         self.decoder_layers, self.dropout = decoder_layers, dropout
         self.max_stmts, self.max_input_tokens = max_stmts, max_input_tokens
+        self.products = products  # also feed the decoder the product of the opening and first unplaced statement vectors
         super().__init__(**kwargs)
 
 
@@ -138,7 +139,7 @@ class TransitionModel(transformers.PreTrainedModel):
         self.chains = nn.Embedding(len(CHAINS), d)
         self.flags = nn.Embedding(8, d)
         self.depths = nn.Embedding(MAX_DEPTH, d)
-        self.step_in = nn.Linear(4 * d, d)
+        self.step_in = nn.Linear((5 if config.products else 4) * d, d)
         self.lstm = nn.LSTM(d, d, config.decoder_layers, batch_first=True, dropout=config.dropout if config.decoder_layers > 1 else 0.0)
         self.attention = nn.MultiheadAttention(d, config.heads, dropout=config.dropout, batch_first=True)
         self.out_norm = nn.LayerNorm(d)
@@ -164,7 +165,9 @@ class TransitionModel(transformers.PreTrainedModel):
         prev = self.actions(feats[..., 0]) + pick(1)
         opener = self.actions(feats[..., 2]) + pick(3)
         frame = self.kinds(feats[..., 5]) + self.chains(feats[..., 6]) + self.flags(feats[..., 7]) + self.depths(feats[..., 8])
-        return self.step_in(torch.cat([prev, opener, pick(4), frame], -1))
+        # a block often ends where its header jumps to: their product lets the decoder compare the two statements
+        products = [pick(3) * pick(4)] if self.config.products else []
+        return self.step_in(torch.cat([prev, opener, pick(4), frame, *products], -1))
 
     def scores(self, h, memory, attention_mask, stmts, next_stmt):
         """Action logits [B, T, N + len(TOKENS)] for decoder states `h`."""
