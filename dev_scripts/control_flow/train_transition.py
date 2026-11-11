@@ -161,6 +161,7 @@ def train_transition_model(config: ControlFlowConfiguration, public: bool = Fals
         max_stmts=config.max_stmts, max_input_tokens=config.max_input_tokens, **transition_parameters,
     ))  # fmt: skip
 
+    print(f"trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
     model_dir = config.model_dir
     train_args = TrainingArguments(
         output_dir=str(model_dir),
@@ -197,6 +198,8 @@ def train_transition_model(config: ControlFlowConfiguration, public: bool = Fals
     start = time.time()
     trainer.train(resume_from_checkpoint=get_last_checkpoint(str(model_dir)) if model_dir.is_dir() else None)
     duration = str(timedelta(seconds=time.time() - start))
+    if torch.cuda.is_available():
+        print(f"peak GPU memory allocated: {torch.cuda.max_memory_allocated() / 2**30:.2f} GiB")
 
     if int(os.environ.get("LOCAL_RANK", "0")) == 0:
         trainer.save_model(str(model_dir))
@@ -210,7 +213,7 @@ def train_transition_model(config: ControlFlowConfiguration, public: bool = Fals
 @click.command(help="Training script for the transition control flow model given a control flow json.")
 @click.argument("json_path", type=str)
 @click.option("--seed", default=42, help="Seed of the initialization, dropout and batch order")
-@click.option("--products", is_flag=True, help="Feed the decoder the product of the opening and first unplaced statement vectors")
+@click.option("--products/--no-products", default=True, help="Feed the decoder the product of the opening and first unplaced statement vectors")
 @click.option("--decoder-layers", default=2, help="LSTM layers of the decoder")
 @click.option("--public", is_flag=True, default=False, help="Make uploaded HuggingFace repos public (default: private)")
 def main(json_path: str, seed: int, products: bool, decoder_layers: int, public: bool):
