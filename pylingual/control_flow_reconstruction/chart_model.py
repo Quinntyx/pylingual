@@ -14,14 +14,14 @@ Gaps are between consecutive statements of an order: the source order in trainin
 
 from __future__ import annotations
 
-from typing import Iterator
-
+import math
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
 from transformers import T5Config, T5EncoderModel
 
-from .chart import KEYWORDS, NONE, Chart, Scores, decode_order
+from .chart import KEYWORDS, NONE, Chart, Scores, decode_order, order_beams, order_score
 from .model_view import CflowRequest
 from .skeleton import BLOCK_KEYWORDS
 
@@ -47,6 +47,17 @@ class ChartParser(T5EncoderModel):
         self.open, self.close = mlp(d), mlp(d)
         self.insert = nn.Linear(d, len(KEYWORDS))
         self.loop = nn.Linear(d, 1)
+        # a successor score by how far the successor is in statement order (most code keeps it)
+        self.order_bias = nn.Embedding(config.order_buckets, 1) if getattr(config, "order_buckets", 0) else None
+        if self.order_bias is not None:
+            nn.init.zeros_(self.order_bias.weight)
+
+    def offset_buckets(self, offsets: torch.Tensor) -> torch.Tensor:
+        """Buckets of statement offsets like T5's relative positions: one each up to 8 away, then logarithmic up to 256."""
+        half, exact = self.config.order_buckets // 2, 8
+        size = offsets.abs()
+        far = exact + (torch.log(size.clamp(min=1).float() / exact) / math.log(256 / exact) * (half - exact)).long()
+        return torch.where(size < exact, size, far.clamp(max=half - 1)) + half * (offsets > 0)
 
     def statements(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Statement vectors (batch, statements, d) and statement counts (batch)."""
@@ -72,6 +83,10 @@ class ChartParser(T5EncoderModel):
         start, end = self.order_ends[:1].expand(b, 1, -1), self.order_ends[1:].expand(b, 1, -1)
         scores = self.before(torch.cat([start, vectors], 1)) @ self.after(torch.cat([vectors, end], 1)).transpose(1, 2)
         column = torch.arange(n + 1, device=vectors.device)
+        if self.order_bias is not None:
+            # rows: the start (-1) and each statement; columns: each statement and the end (at the statement count)
+            to = torch.where(column[None] == n, counts[:, None], column[None])
+            scores = scores + self.order_bias(self.offset_buckets(to[:, None, :] - (column - 1)[None, :, None]))[..., 0].to(scores.dtype)
         mask = (column[None, None, : n + 1] < counts[:, None, None]) | (column == n)[None, None]
         mask = mask & (column[None, None] != column[None, :, None] - 1)  # not the statement itself
         return scores.masked_fill(~mask, MASKED)
@@ -141,28 +156,30 @@ class ChartParser(T5EncoderModel):
 
     def skeletons(self, request: CflowRequest, vectors: torch.Tensor, successors: torch.Tensor, num_beams: int) -> list[list[str]]:
         """
-        Up to `num_beams` skeletons the block grammar accepts, best first: from the predicted order, then from the
-        statement order (the last beam when it is free); BlockGrammar.complete when no order has one.
+        Up to `num_beams` skeletons the block grammar accepts, best first, by the log probability of their order and of
+        their items in it. The orders: the `order_candidates` best of the successor head (config, 1 by default) and
+        the statement order. BlockGrammar.complete when no order has one.
         """
         grammar = request.grammar()
-        predicted = decode_order(successors.float().cpu().numpy(), request.shapes)
+        n = request.n
+        columns = list(range(n)) + [successors.shape[-1] - 1]  # each statement, then the end
+        log_probs = successors[: n + 1, columns].float().log_softmax(-1).cpu().numpy()
+        orders = order_beams(log_probs, request.shapes, getattr(self.config, "order_candidates", 1))
         in_order = decode_order(None, request.shapes)
+        if all(order != in_order for _, order in orders):
+            orders.append((order_score(log_probs, in_order), in_order))
+        keywords = [KEYWORDS.index(k) for k in self.config.skeleton_keywords]
         found = []
-
-        def accepted(order: list[int]) -> Iterator[list[str]]:
-            chart = Chart(grammar, order, self.scores(vectors, order), self.config.skeleton_keywords)
-            for _, tokens in chart.best(4 * num_beams):
+        for score, order in orders:
+            scores = self.scores(vectors, order)
+            # insert holds log odds: a skeleton's probability has every keyword it leaves out, too
+            score += -float(np.logaddexp(0, scores.insert[:, keywords]).sum())
+            accepted = 0
+            for item_score, tokens in Chart(grammar, order, scores, self.config.skeleton_keywords).best(4 * num_beams):
                 if grammar.accepts(tokens):
-                    yield tokens
-
-        for tokens in accepted(predicted):
-            found.append(tokens)
-            if len(found) == num_beams:
-                break
-        if predicted != in_order and (len(found) < num_beams or num_beams > 1):
-            for tokens in accepted(in_order):
-                if tokens not in found:
-                    found = found[: num_beams - 1] + [tokens] if len(found) == num_beams else found + [tokens]
-                    if len(found) == num_beams:
+                    found.append((score + item_score, tokens))
+                    accepted += 1
+                    if accepted == num_beams:
                         break
-        return found or [grammar.complete(grammar.start())]
+        found.sort(key=lambda f: -f[0])
+        return [tokens for _, tokens in found[:num_beams]] or [grammar.complete(grammar.start())]

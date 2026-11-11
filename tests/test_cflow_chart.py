@@ -9,7 +9,7 @@ from transformers import T5Config
 
 from dataset_generation.bytecode2cflow import make_examples
 from pylingual.control_flow_reconstruction import block_grammar
-from pylingual.control_flow_reconstruction.chart import KEYWORDS, Chart, Scores, gold_items, oracle_scores
+from pylingual.control_flow_reconstruction.chart import KEYWORDS, Chart, Scores, decode_order, gold_items, oracle_scores, order_beams, order_score
 from pylingual.control_flow_reconstruction.chart_model import ChartParser
 from pylingual.control_flow_reconstruction.model_view import STMT_SEP, CflowRequest
 from pylingual.control_flow_reconstruction.skeleton import BLOCK_KEYWORDS
@@ -75,6 +75,30 @@ def test_chart_writes_gold_skeletons(version, tmp_path, monkeypatch):
             best = [t for _, t in Chart(request.grammar(), gold_items(row["target"].split()).order, scores, KEYWORDS).best(5)]
             assert len(best) == 5 and all(request.grammar().accepts(t) for t in best)
             assert len({tuple(t) for t in best}) == len(best)
+
+
+def test_order_beams():
+    """One beam is the greedy order; beams are distinct permutations with prefix statements first, scored by order_score."""
+    rng = np.random.default_rng(0)
+    shapes = [block_grammar.Shape.parse(s) for s in ["prefix"] + ["stmt"] * 8]
+    n = len(shapes)
+    log_probs = torch.tensor(rng.normal(size=(n + 1, n + 1))).log_softmax(-1).numpy()
+    assert order_beams(log_probs, shapes, 1)[0][1] == decode_order(log_probs, shapes)
+    beams = order_beams(log_probs, shapes, 5)
+    assert len(beams) == 5 and len({tuple(o) for _, o in beams}) == 5
+    assert [s for s, _ in beams] == sorted((s for s, _ in beams), reverse=True)
+    for score, order in beams:
+        assert order[0] == 0 and sorted(order) == list(range(n)) and score == pytest.approx(order_score(log_probs, order))
+
+
+def test_large_requests_get_the_statement_order(tmp_path):
+    """Requests over the model's statement limit get BlockGrammar.complete rather than no skeleton."""
+    rows = fixture_rows("3.12", tmp_path, ["Exception", "Loop"])
+    model, tokenizer = tiny_model(rows)
+    model.config.max_stmts = 1
+    requests = [CflowRequest.from_row(r) for r in rows]
+    for request, skeletons in zip(requests, ChartPredictor(model, tokenizer)(requests)):
+        assert skeletons and skeletons[0] == request.grammar().complete(request.grammar().start())
 
 
 @pytest.mark.filterwarnings("ignore::SyntaxWarning")

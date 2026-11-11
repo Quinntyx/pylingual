@@ -123,6 +123,38 @@ def decode_order(successors: np.ndarray | None, shapes: list[Shape]) -> list[int
     return order
 
 
+def order_score(log_probs: np.ndarray, order: list[int]) -> float:
+    """Log probability of `order` under successor log probabilities (rows as in decode_order, the last column the end)."""
+    n = len(order)
+    rows = [0] + [i + 1 for i in order]
+    return float(log_probs[rows, order + [n]].sum())
+
+
+def order_beams(log_probs: np.ndarray, shapes: list[Shape], k: int) -> list[tuple[float, list[int]]]:
+    """
+    Up to `k` best orders by beam search over successor log probabilities (rows as in decode_order, the last column
+    the end), with their order_score, best first. Prefix statements come first.
+    """
+    n = len(shapes)
+    prefix = [i for i in range(n) if shapes[i].prefix]
+    left = np.ones(n, dtype=bool)
+    left[prefix] = False
+    beams = [(float(log_probs[[0] + [i + 1 for i in prefix[:-1]], prefix].sum()), prefix, left)]
+    for _ in range(n - len(prefix)):
+        options = []
+        for score, order, left in beams:
+            row = np.where(left, log_probs[order[-1] + 1 if order else 0, :n], NONE)
+            for i in np.argsort(-row)[: min(k, int(left.sum()))]:
+                options.append((score + float(row[i]), order, left, int(i)))
+        options.sort(key=lambda o: -o[0])
+        beams = []
+        for score, order, left, i in options[:k]:
+            left = left.copy()
+            left[i] = False
+            beams.append((score, order + [i], left))
+    return sorted(((score + float(log_probs[order[-1] + 1 if order else 0, n]), order) for score, order, _ in beams), key=lambda b: -b[0])
+
+
 def view(m: np.ndarray, start: tuple[int, int], cell: tuple[int, int], split: tuple[int, int], shape: tuple[int, int]) -> np.ndarray:
     """v[i, j] = m[start + i * cell + j * split] (row and column steps), as a read-only view of the matrix `m`."""
     s0, s1 = m.strides

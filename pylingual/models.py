@@ -245,7 +245,10 @@ class ChartPredictor(ControlFlowPredictor):
     """
 
     def __init__(self, model, tokenizer: transformers.PreTrainedTokenizerFast, device="cpu"):
-        super().__init__(model.config.max_stmts, model.config.max_input_tokens)
+        # every request gets a skeleton: those over the model's limits get BlockGrammar.complete (see _generate)
+        super().__init__(max_stmts=1 << 30, max_input_tokens=1 << 30)
+        self.model_max_stmts = model.config.max_stmts
+        self.model_max_input_tokens = model.config.max_input_tokens
         self.model = model.eval()
         self.tokenizer = tokenizer
         self.device = device
@@ -260,11 +263,26 @@ class ChartPredictor(ControlFlowPredictor):
         return cls(model, tokenizer, device=device)
 
     def _generate(self, batch: list[CflowRequest], num_beams: int) -> list[list[list[str]]]:
-        encoded = self.tokenizer([" ".join(r.tokens) for r in batch], return_tensors="pt", padding=True).to(self.device)
+        """
+        The model's skeletons for the requests within its limits; the statements in order (BlockGrammar.complete) for
+        the others and when the model fails on one.
+        """
+        results = [[r.grammar().complete(r.grammar().start())] for r in batch]
+        todo = [i for i, r in enumerate(batch) if r.n <= self.model_max_stmts and len(r.tokens) < self.model_max_input_tokens]
+        if not todo:
+            return results
+        encoded = self.tokenizer([" ".join(batch[i].tokens) for i in todo], return_tensors="pt", padding=True).to(self.device)
         with torch.no_grad():
             vectors, counts = self.model.statements(encoded.input_ids, encoded.attention_mask)
             successors = self.model.successors(vectors, counts)
-            return [self.model.skeletons(r, v[: r.n], s, num_beams) for r, v, s in zip(batch, vectors, successors)]
+            for i, v, s in zip(todo, vectors, successors):
+                try:
+                    results[i] = self.model.skeletons(batch[i], v[: batch[i].n], s, num_beams)
+                except (TimeoutError, KeyboardInterrupt):
+                    raise
+                except Exception as e:
+                    logger.info(f"Chart parser failed on a code object, keeping the statement order ({e!r})")
+        return results
 
 
 # ARCH of a CONTROL_FLOW_MODEL entry -> its predictor
