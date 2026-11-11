@@ -1,0 +1,28 @@
+{
+    "base_repo_name": "sample_user/py312-sample_name",
+    "dataset_dirs": ["./cache-dir/datasets/py312-cflow/cflow"],
+    "cache_dir": "./cache-dir",
+    "max_stmts": 256,
+    "max_input_tokens": 2048,
+    "push_to_hub": false,
+    "model_parameters": {
+        "d_model": 384,
+        "layers": 6,
+        "heads": 6,
+        "d_ff": 1536
+    },
+    "training_parameters": {
+        "batch_size": 64,
+        "epochs": 12,
+        "learning_rate": 4e-4
+    },
+    "chart": {
+        "seed": 42,
+        "max_batch_tokens": 16384,
+        "order_buckets": 32,
+        "edge_features": true,
+        "loop_edges": true,
+        "loop_mlp": 32,
+        "order_candidates": 8
+    }
+}

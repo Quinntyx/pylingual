@@ -236,8 +236,58 @@ class SkeletonPredictor(ControlFlowPredictor):
         return [[from_model_order(x.split()) for x in decoded[j * num_beams : (j + 1) * num_beams]] for j in range(len(batch))]
 
 
+class ChartPredictor(ControlFlowPredictor):
+    """
+    Statement encoder with a chart parser (see control_flow_reconstruction/chart_model.py)
+
+    :param model: The loaded ChartParser, its config holds the limits and keywords it was trained with
+    :param tokenizer: The control flow model's tokenizer
+    """
+
+    def __init__(self, model, tokenizer: transformers.PreTrainedTokenizerFast, device="cpu"):
+        # every request gets a skeleton: those over the model's limits get BlockGrammar.complete (see _generate)
+        super().__init__(max_stmts=1 << 30, max_input_tokens=1 << 30)
+        self.model_max_stmts = model.config.max_stmts
+        self.model_max_input_tokens = model.config.max_input_tokens
+        self.model = model.eval()
+        self.tokenizer = tokenizer
+        self.device = device
+        self.model.to(self.device)
+
+    @classmethod
+    def from_pretrained(cls, repo: str, revision: str | None = None, token=False, device="cpu") -> ChartPredictor:
+        from pylingual.control_flow_reconstruction.chart_model import ChartParser
+
+        model = _cached_first(ChartParser.from_pretrained, repo, revision=revision, token=token)
+        tokenizer = _cached_first(transformers.PreTrainedTokenizerFast.from_pretrained, repo, revision=revision, token=token)
+        return cls(model, tokenizer, device=device)
+
+    def _generate(self, batch: list[CflowRequest], num_beams: int) -> list[list[list[str]]]:
+        """
+        The model's skeletons for the requests within its limits; the statements in order (BlockGrammar.complete) for
+        the others and when the model fails on one.
+        """
+        results = [[r.grammar().complete(r.grammar().start())] for r in batch]
+        todo = [i for i, r in enumerate(batch) if r.n <= self.model_max_stmts and len(r.tokens) < self.model_max_input_tokens]
+        if not todo:
+            return results
+        encoded = self.tokenizer([" ".join(batch[i].tokens) for i in todo], return_tensors="pt", padding=True).to(self.device)
+        with torch.no_grad():
+            vectors, counts, edges = self.model.statements(encoded.input_ids, encoded.attention_mask)
+            successors = self.model.successors(vectors, counts, edges)
+            for j, (i, s) in enumerate(zip(todo, successors)):
+                n = batch[i].n
+                try:
+                    results[i] = self.model.skeletons(batch[i], vectors[j, :n], None if edges is None else edges[j, :n, :n], s, num_beams)
+                except (TimeoutError, KeyboardInterrupt):
+                    raise
+                except Exception as e:
+                    logger.info(f"Chart parser failed on a code object, keeping the statement order ({e!r})")
+        return results
+
+
 # ARCH of a CONTROL_FLOW_MODEL entry -> its predictor
-PREDICTORS: dict[str, type[ControlFlowPredictor]] = {"t5": SkeletonPredictor}
+PREDICTORS: dict[str, type[ControlFlowPredictor]] = {"t5": SkeletonPredictor, "chart": ChartPredictor}
 
 # offline support if models are downloaded
 def _cached_first(fn, *args, **kwargs):
