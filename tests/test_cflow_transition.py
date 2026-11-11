@@ -49,7 +49,7 @@ def test_save_and_load(tmp_path):
 
 
 def test_decompiler_with_transition_model(tmp_path):
-    """A CONTROL_FLOW_MODEL with ARCH transition: the decompiler takes its skeletons, then the templates if they fail."""
+    """A CONTROL_FLOW_MODEL with ARCH transition: the decompiler takes its skeletons."""
     model_dir = tmp_path / "model"
     tiny_model().save_pretrained(model_dir)
     config = {"REPO": str(model_dir), "REVISION": "main", "ARCH": "transition"}

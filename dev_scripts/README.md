@@ -65,11 +65,13 @@ uv run prepare_dataset.py sample_jsons/py312-sample-control-flow-nas-data.json -
 
 Models are compared on the [PyLingual evaluation dataset](https://github.com/syssec-utd/pylingual_eval_dataset) v1 (`git clone --branch v1.1.0 --depth 1`), whose `python-3.x` directories `bench_cflow.py` reads directly.
 
-The transition model (`ARCH: transition`, `pylingual/control_flow_reconstruction/transition.py`) encodes the statements and writes the skeleton one grammar action at a time, pointing at statements instead of naming them. It trains from the same rows and model JSON format (`sample_jsons/py312-sample-control-flow-transition.json`):
+The transition model (`ARCH: transition`, `pylingual/control_flow_reconstruction/transition.py`) encodes the statements and writes the skeleton one grammar action at a time, pointing at statements instead of naming them. It trains from the same rows and model JSON format (`sample_jsons/py312-sample-control-flow-transition.json`, the config of the benched model; `--seed` sets the seed, 42 by default):
 
 ```
 cd control_flow && uv run train_transition.py ../sample_jsons/py312-sample-control-flow-transition.json
 ```
+
+Batches hold up to `batch_size` rows, fewer for large code objects, so a 2048 statement code object fits in memory. The predictor runs the model on inputs up to 4x the config's `max_stmts` and `max_input_tokens`, and gives any request it cannot predict its statements in bytecode order, so every code object gets a skeleton without the templates.
 
 Every skeleton a model gives must fit the block grammar (`pylingual/control_flow_reconstruction/block_grammar.py`), Python's block structure as a pushdown automaton, so the source rendered from it compiles. The dataset rows carry the statement `shapes` and `version` the grammar needs. To compare models on the same files, with the gold segmentation and lines:
 
