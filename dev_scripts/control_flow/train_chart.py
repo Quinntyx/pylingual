@@ -43,6 +43,7 @@ CHART_DEFAULTS = {
     "order_candidates": 8,  # orders of the successor head the chart decodes, besides the statement order
     "edge_features": True,  # score the input's edges between statements in the order and block end heads
     "loop_edges": True,  # if or while by the edges back from the block end (needs edge_features)
+    "loop_mlp": 32,  # hidden size of the while score from those edges, 0 for a linear score
     "eval_beams": 1,
 }
 
@@ -178,6 +179,7 @@ def train_chart_model(config: ControlFlowConfiguration, chart: dict):
     model_config.order_candidates = chart["order_candidates"]
     model_config.edge_features = chart["edge_features"]
     model_config.loop_edges = chart["loop_edges"]
+    model_config.loop_mlp = chart["loop_mlp"]
     model_config.edge_token_ids = [[tokenizer.convert_tokens_to_ids(kind + d) for d in "+-="] for kind in EDGE_KINDS]
     model_config.mid_token_id = tokenizer.convert_tokens_to_ids(MID)
     model_config.ref_token_id = tokenizer.convert_tokens_to_ids(ref(0))  # the references are in order

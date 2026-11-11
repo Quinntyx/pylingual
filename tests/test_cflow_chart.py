@@ -49,7 +49,7 @@ def tiny_model(rows: list[dict]) -> tuple[ChartParser, object]:
     config.max_stmts, config.max_input_tokens = 512, 1 << 16
     config.skeleton_keywords = KEYWORDS
     config.statement_token_id = tokenizer.convert_tokens_to_ids(STMT_SEP)
-    config.order_buckets, config.order_candidates, config.edge_features, config.loop_edges = 32, 2, True, True
+    config.order_buckets, config.order_candidates, config.edge_features, config.loop_edges, config.loop_mlp = 32, 2, True, True, 8
     config.edge_token_ids = [[tokenizer.convert_tokens_to_ids(kind + d) for d in "+-="] for kind in EDGE_KINDS]
     config.mid_token_id = tokenizer.convert_tokens_to_ids(MID)
     config.ref_token_id = tokenizer.convert_tokens_to_ids("<s0>")

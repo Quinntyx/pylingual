@@ -62,6 +62,11 @@ class ChartParser(T5EncoderModel):
         # (where 3.12 loops jump back to), for the block end; and that edge and one to the header for whether a cond
         # header is a while, which then depends on where its block ends
         self.loop_edge_weights = nn.Parameter(torch.zeros(3, EDGE_FEATURES)) if self.edge_weights is not None and getattr(config, "loop_edges", False) else None
+        # with `loop_mlp` (a hidden size), the while score is a function of the edges from the statement before the end
+        # to the statement after the header, to the header and to the statement after the end, and from the header to
+        # the statement after the end: a while tests again at the end of its body, an if around a `while True` does not
+        hidden = getattr(config, "loop_mlp", 0) if self.loop_edge_weights is not None else 0
+        self.loop_edges_mlp = nn.Sequential(nn.Linear(4 * EDGE_FEATURES, hidden), nn.GELU(), nn.Linear(hidden, 1)) if hidden else None
 
     def edges(self, input_ids: torch.Tensor, statement: torch.Tensor, n: int) -> torch.Tensor | None:
         """(batch, statements, statements, EDGE_FEATURES): whether a statement has an edge of each kind to another."""
@@ -100,7 +105,12 @@ class ChartParser(T5EncoderModel):
             return end, None
         lw = self.loop_edge_weights.to(padded.dtype)
         to_body = padded[:, : n + 1, 2:].transpose(1, 2)
-        return end + to_body @ lw[0], to_body @ lw[1] + to_header @ lw[2]
+        if self.loop_edges_mlp is None:
+            return end + to_body @ lw[0], to_body @ lw[1] + to_header @ lw[2]
+        to_after = padded[:, 1 : n + 1, 1:]  # from the header
+        last_to_after = torch.diagonal(padded[:, : n + 1, 1:], dim1=1, dim2=2).transpose(1, 2)[:, None].expand_as(to_after)
+        features = torch.cat([to_body, to_header, last_to_after, to_after], -1)
+        return end + to_body @ lw[0], self.loop_edges_mlp(features)[..., 0]
 
     def offset_buckets(self, offsets: torch.Tensor) -> torch.Tensor:
         """Buckets of statement offsets like T5's relative positions: one each up to 8 away, then logarithmic up to 256."""
