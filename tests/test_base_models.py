@@ -111,7 +111,7 @@ def test_segmentation_preserves_reference_torch_confidence(tokenizer, tmp_path):
         patch.object(models.transformers.T5ForConditionalGeneration, "from_pretrained", return_value=TranslationModel(tokenizer)),
         patch.object(models.transformers.PreTrainedTokenizerFast, "from_pretrained", return_value=tokenizer),
     ):
-        segmenter, _ = models.load_models.__wrapped__(config_file, device=torch.device("cpu"))
+        segmenter, _, _ = models.load_models.__wrapped__(config_file, device=torch.device("cpu"))
     for predictions in segmenter(["LOAD_CONST None", "RETURN_VALUE"], batch_size=2):
         assert predictions
         assert all(row["entity"] == "E" for row in predictions)
@@ -144,3 +144,20 @@ def test_loading_reuses_segmentation_model_and_translation_cache(tokenizer, tmp_
     assert tokenizer_load.call_count == 2
     assert {call.kwargs["subfolder"] for call in tokenizer_load.call_args_list} == {"statement", "segmentation"}
     assert first[1].redis_namespace_prefix.startswith("syssec-utd/pylingual-shared-statement-v3@a20bc4")
+    assert first[2] is None
+
+
+def test_loading_builds_the_shared_control_flow_model(tokenizer, tmp_path):
+    path = tmp_path / "models.yaml"
+    config = yaml.safe_load((Path(models.__file__).parent / "decompiler_config.yaml").read_text())
+    path.write_text(yaml.safe_dump({**config, "CONTROL_FLOW_MODEL": {"REPO": "/models/cflow", "REVISION": "abc", "ARCH": "transition"}}))
+    sentinel = Mock()
+    with (
+        patch.object(models.transformers.AutoModelForTokenClassification, "from_pretrained", return_value=TranslationModel(tokenizer)),
+        patch.object(models.transformers.T5ForConditionalGeneration, "from_pretrained", return_value=TranslationModel(tokenizer)),
+        patch.object(models.transformers.PreTrainedTokenizerFast, "from_pretrained", return_value=tokenizer),
+        patch.object(models.TransitionPredictor, "from_pretrained", return_value=sentinel) as cflow_load,
+    ):
+        _, _, cflow_model = models.load_models.__wrapped__(path, device=torch.device("cpu"))
+    assert cflow_model is sentinel
+    cflow_load.assert_called_once_with("/models/cflow", revision="abc", token=False, device=torch.device("cpu"))

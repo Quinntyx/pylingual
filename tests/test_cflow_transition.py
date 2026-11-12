@@ -4,12 +4,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 import torch
+import yaml
 
 from dataset_generation.bytecode2cflow import make_examples
 from pylingual.control_flow_reconstruction.model_view import INPUT_TOKENS, CflowRequest
 from pylingual.control_flow_reconstruction.templates.Skeleton import SkeletonTemplate
 from pylingual.control_flow_reconstruction.transition import SPECIAL, TransitionConfig, TransitionModel
 from pylingual.editable_bytecode import PYCFile
+from pylingual import models
 from pylingual.models import PREDICTORS, TransitionPredictor, control_flow_config
 from pylingual.utils.version import PythonVersion
 
@@ -62,13 +64,11 @@ def test_decompiler_with_transition_model(tmp_path):
 
 
 def test_shared_control_flow_config():
-    """A top-level CONTROL_FLOW_MODEL serves every version; a version's own entry overrides it."""
-    shared, own = {"REPO": "unified", "ARCH": "transition"}, {"REPO": "py312", "ARCH": "transition"}
-    config = {"v3.6": {}, "v3.12": {"CONTROL_FLOW_MODEL": own}}
-    assert control_flow_config(config, PythonVersion((3, 6))) is None
-    config["CONTROL_FLOW_MODEL"] = shared
-    assert control_flow_config(config, PythonVersion((3, 6))) == shared
-    assert control_flow_config(config, PythonVersion((3, 12))) == own
+    """The flat config's top-level CONTROL_FLOW_MODEL serves every version; without one there is no control flow model."""
+    config = yaml.safe_load((Path(models.__file__).parent / "decompiler_config.yaml").read_text())
+    assert control_flow_config(config) is None
+    shared = {"REPO": "unified", "REVISION": "main", "ARCH": "transition"}
+    assert control_flow_config({**config, "CONTROL_FLOW_MODEL": shared}) == shared
 
 
 def test_in_order_past_the_limits():
