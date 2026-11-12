@@ -284,6 +284,11 @@ class TransitionPredictor(ControlFlowPredictor):
 # ARCH of a CONTROL_FLOW_MODEL entry -> its predictor
 PREDICTORS: dict[str, type[ControlFlowPredictor]] = {"t5": SkeletonPredictor, "transition": TransitionPredictor}
 
+
+def control_flow_config(config: dict, version: PythonVersion) -> dict | None:
+    """The CONTROL_FLOW_MODEL entry for `version`: its own, else the top-level one shared by every version, else None."""
+    return config[f"v{version}"].get("CONTROL_FLOW_MODEL", config.get("CONTROL_FLOW_MODEL"))
+
 # offline support if models are downloaded
 def _cached_first(fn, *args, **kwargs):
     """Try the local HF cache first; fall back to downloading if it's missing."""
@@ -341,7 +346,7 @@ def load_models(
         config = yaml.safe_load(f)
         seg_config = config[f"v{version}"]["SEGMENTATION_MODEL"]
         stmt_config = config[f"v{version}"]["STATEMENT_MODEL"]
-        cflow_config = config[f"v{version}"].get("CONTROL_FLOW_MODEL")
+        cflow_config = control_flow_config(config, version)
 
     #################################
     # Segmentation model components #

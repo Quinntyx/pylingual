@@ -10,7 +10,7 @@ from pylingual.control_flow_reconstruction.model_view import INPUT_TOKENS, Cflow
 from pylingual.control_flow_reconstruction.templates.Skeleton import SkeletonTemplate
 from pylingual.control_flow_reconstruction.transition import SPECIAL, TransitionConfig, TransitionModel
 from pylingual.editable_bytecode import PYCFile
-from pylingual.models import PREDICTORS, TransitionPredictor
+from pylingual.models import PREDICTORS, TransitionPredictor, control_flow_config
 from pylingual.utils.version import PythonVersion
 
 from test_cflow_dataset import VERSIONS, compiled_fixture
@@ -59,6 +59,16 @@ def test_decompiler_with_transition_model(tmp_path):
     assert d.cflow_results[f] and all(d.cflow_requests[f].grammar().accepts(s) for s in d.cflow_results[f])
     assert d.equivalence_results and all(r.success for r in d.equivalence_results)
     assert not isinstance(cft_of_f(d), SkeletonTemplate) or d.cflow_requests[f].grammar().accepts(cft_of_f(d).tokens)
+
+
+def test_shared_control_flow_config():
+    """A top-level CONTROL_FLOW_MODEL serves every version; a version's own entry overrides it."""
+    shared, own = {"REPO": "unified", "ARCH": "transition"}, {"REPO": "py312", "ARCH": "transition"}
+    config = {"v3.6": {}, "v3.12": {"CONTROL_FLOW_MODEL": own}}
+    assert control_flow_config(config, PythonVersion((3, 6))) is None
+    config["CONTROL_FLOW_MODEL"] = shared
+    assert control_flow_config(config, PythonVersion((3, 6))) == shared
+    assert control_flow_config(config, PythonVersion((3, 12))) == own
 
 
 def test_in_order_past_the_limits():

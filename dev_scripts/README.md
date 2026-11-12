@@ -71,6 +71,8 @@ The transition model (`ARCH: transition`, `pylingual/control_flow_reconstruction
 cd control_flow && uv run train_transition.py ../sample_jsons/py312-sample-control-flow-transition.json
 ```
 
+One transition model can serve every version, as one model pair serves the translation stage: build a control flow dataset for each version, then train on all of them by listing every version's `cflow` dir in `dataset_dirs` (`sample_jsons/sample-control-flow-transition-unified.json`). The input carries each version's opcodes and the grammar takes each request's version, so the model needs no version token. The benched unified model was trained on the 150k sources of the shared-backbone corpus, 15k per version (13,500 PyPI, 1,500 CodeSearchNet), each source compiled for one version only. A NAS data JSON per version, with that version, its own `name`, `source_path`s and `seed`, and 15k files, collects a similar corpus, though the collect stage keeps sources apart only within one dataset.
+
 Batches hold up to `batch_size` rows, fewer for large code objects, so a 2048 statement code object fits in memory. The predictor runs the model on inputs up to 4x the config's `max_stmts` and `max_input_tokens`, and gives any request it cannot predict its statements in bytecode order, so every code object gets a skeleton without the templates.
 
 Every skeleton a model gives must fit the block grammar (`pylingual/control_flow_reconstruction/block_grammar.py`), Python's block structure as a pushdown automaton, so the source rendered from it compiles. The dataset rows carry the statement `shapes` and `version` the grammar needs. To compare models on the same files, with the gold segmentation and lines:
@@ -80,4 +82,4 @@ uv run bench_cflow.py ./cache-dir/datasets/py312-cflow/code/test --model <Huggin
 uv run bench_cflow.py ./cache-dir/datasets/py312-cflow/code/test --baseline
 ```
 
-To use a model, add `CONTROL_FLOW_MODEL: {REPO: <HuggingFace repo or absolute path>, REVISION: main}` to the version in `decompiler_config.yaml`, with `ARCH: <name>` for a model other than the T5 one (see `PREDICTORS` in `pylingual/models.py`). Code objects that fail the equivalence check fall back to the model's other beams, then to the control flow templates, then to re-segmentation. Changing the output of `pylingual/control_flow_reconstruction/model_view.py` needs new models.
+To use a model, add `CONTROL_FLOW_MODEL: {REPO: <HuggingFace repo or absolute path>, REVISION: main}` to the version in `decompiler_config.yaml`, or at the top level of the file for every version without its own entry, with `ARCH: <name>` for a model other than the T5 one (see `PREDICTORS` in `pylingual/models.py`). Code objects that fail the equivalence check fall back to the model's other beams, then to the control flow templates, then to re-segmentation. Changing the output of `pylingual/control_flow_reconstruction/model_view.py` needs new models.
