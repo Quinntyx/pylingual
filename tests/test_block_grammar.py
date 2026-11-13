@@ -79,7 +79,7 @@ def random_skeleton(grammar: BlockGrammar, rng: random.Random, deep: bool) -> li
 
 
 def render(texts: list[str], shapes: list[Shape], tokens: list[str], depth: int) -> list[str]:
-    """Source lines of a skeleton, written like templates/Skeleton.py does (but without elif)."""
+    """Source lines of a skeleton, written like skeleton_template.py does (but without elif)."""
     lines, loop = [], False
     for token in tokens:
         if token in (LOOP, OPEN, CLOSE):

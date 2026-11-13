@@ -38,7 +38,7 @@ from dataset_generation.bytecode2cflow import equivalent_names, load_pair, make_
 from pylingual.control_flow_reconstruction.model_view import CflowRequest
 from pylingual.models import PREDICTORS, ControlFlowPredictor
 
-FILE_TIMEOUT = 300  # seconds; the templates for the code objects without a skeleton can be slow
+FILE_TIMEOUT = 300  # seconds; a file with many code objects and beams recompiles once per candidate
 
 
 class InOrder(ControlFlowPredictor):
@@ -87,7 +87,7 @@ def check(py: Path, candidates: dict[str, list[list[str]]]) -> dict[str, list[tu
         for name, skeletons in candidates.items():
             out[name] = []
             for tokens in skeletons:
-                # the templates change the bytecode they read, so each render starts from the file again
+                # labeling lines changes the bytecode it reads, so each render starts from the file again
                 src, pyc, pyc_path = load_pair(py, py.with_suffix(".pyc"), Path(tmp))
                 guess = [e | {"target": " ".join(tokens)} if e["name"] == name else e for e in make_examples(pyc, src)]
                 names = equivalent_names(pyc, pyc_path, src, guess, Path(tmp) / "guess.py")

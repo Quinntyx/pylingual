@@ -27,8 +27,7 @@ import tqdm
 from pylingual.control_flow_reconstruction.model_view import cflow_request
 from pylingual.control_flow_reconstruction.skeleton import BLOCK_KEYWORDS, ref
 from pylingual.control_flow_reconstruction.source import SourceContext
-from pylingual.control_flow_reconstruction.structure import bc_to_cft
-from pylingual.control_flow_reconstruction.templates.Skeleton import SkeletonTemplate
+from pylingual.control_flow_reconstruction.skeleton_template import SkeletonTemplate
 from pylingual.editable_bytecode import EditableBytecode, PYCFile
 from pylingual.equivalence_check import compare_pyc
 from pylingual.masking.ast_masker import DUMMY_DECORATOR
@@ -63,7 +62,7 @@ def mark_line_starts(bc: EditableBytecode, lno_insts: dict, src_lines: list[str]
 
 
 def assign_lines(pyc: PYCFile, src_lines: list[str]):
-    """Mark line starts like the segmentation model does, after the same bytecode preprocessing as dev_scripts/cflow.py."""
+    """Mark line starts like the segmentation model does, after merging duplicated returns like the segmentation dataset (bytecode2csv.py)."""
     if pyc.version == (3, 10):
         pyc.replace_duplicated_returns10(src_lines)
     elif pyc.version >= (3, 12):
@@ -238,13 +237,13 @@ def make_examples(pyc: PYCFile, src: str) -> list[dict]:
 
 
 def render_with_skeletons(pyc: PYCFile, lines: list[str], examples: list[dict]) -> str:
-    """Source of `pyc` with the gold skeletons of `examples`; other code objects use the templates."""
+    """Source of `pyc` with the gold skeletons of `examples`; other code objects get their statements in order."""
     by_bc = {e["_bc"]: e for e in examples}
     cfts = {}
     for bc in pyc.iter_bytecodes():
         e = by_bc.get(bc)
         if e is None:
-            cfts[bc.codeobj] = bc_to_cft(bc, lines)
+            cfts[bc.codeobj] = SkeletonTemplate.for_request(bc, cflow_request(bc, lines))
         else:
             cfts[bc.codeobj] = SkeletonTemplate(bc, e["_stmts"], e["target"].split())
     return str(SourceContext(pyc, lines, cfts))
@@ -294,7 +293,7 @@ def _timeout(*_):
 
 
 def bytecode2cflow_exception_wrapper(paths: tuple[Path, Path]) -> list[dict] | Exception:
-    # the templates can take minutes on some code objects; skip the file instead of stalling the pool
+    # a huge file can take minutes; skip it instead of stalling the pool
     signal.signal(signal.SIGALRM, _timeout)
     signal.alarm(60)
     try:

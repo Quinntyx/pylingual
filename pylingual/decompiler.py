@@ -41,9 +41,7 @@ from xdis.magics import magicint2version
 
 from pylingual.control_flow_reconstruction.model_view import CflowRequest, cflow_request
 from pylingual.control_flow_reconstruction.source import SourceContext, SourceLine
-from pylingual.control_flow_reconstruction.structure import bc_to_cft
-from pylingual.control_flow_reconstruction.cft import ControlFlowTemplate, MetaTemplate
-from pylingual.control_flow_reconstruction.templates.Skeleton import SkeletonTemplate
+from pylingual.control_flow_reconstruction.skeleton_template import SkeletonTemplate
 from pylingual.equivalence_check import PatchedPYC, TestResult, compare_pyc
 from pylingual.models import CacheTranslator, load_models
 from pylingual.utils.generate_bytecode import CompileError, PyenvError, compile_version
@@ -122,10 +120,12 @@ class Decompiler:
     :param version: The python version
     :param top_k: Value of k to use for top k segmentation
     :param trust_lnotab: Decides whether or not to use line number information
-    :param cflow_model: Control flow model, or None to use the control flow templates only
+    :param cflow_model: The loaded control flow model
     """
 
-    def __init__(self, pyc: PYCFile, segmenter: transformers.Pipeline, translator: CacheTranslator, version: PythonVersion, top_k=10, trust_lnotab=False, timeout=None, cflow_model: ControlFlowPredictor | None = None):
+    def __init__(self, pyc: PYCFile, segmenter: transformers.Pipeline, translator: CacheTranslator, version: PythonVersion, top_k=10, trust_lnotab=False, timeout=None, *, cflow_model: ControlFlowPredictor):
+        if cflow_model is None:
+            raise ValueError("control flow reconstruction needs a control flow model")
         self.pyc = pyc
         self.name = pyc.pyc_path.name if pyc.pyc_path is not None else repr(pyc)
         self.segmenter = segmenter
@@ -370,9 +370,6 @@ class Decompiler:
             raise
 
     def run_cflow_prediction(self):
-        if self.cflow_model is None:
-            self.cflow_requests, self.cflow_results = [None] * len(self.ordered_bytecodes), [None] * len(self.ordered_bytecodes)
-            return
         logger.info(f"Predicting control flow for {self.name}...")
         try:
             self.cflow_requests = [cflow_request(bc, self.source_lines) for bc in self.ordered_bytecodes]
@@ -418,16 +415,14 @@ class Decompiler:
                 translation_requests[-1] += bytecode_separator + model_view
         return translation_requests
 
-    # candidate skeletons for each request, None where the templates should be used (no request, or no skeleton fits)
+    # candidate skeletons for each request, None where there is no request
     def predict_skeletons(self, requests: list[CflowRequest | None], num_beams=1) -> list[list[list[str]] | None]:
         return self.cflow_model(requests, num_beams=num_beams, check_timeout=self.check_timeout)
 
-    # the model's best skeleton for the ith code object, or the templates
-    def make_cft(self, i: int) -> ControlFlowTemplate:
-        bc = self.ordered_bytecodes[i]
-        if self.cflow_results[i]:
-            return SkeletonTemplate(bc, self.cflow_requests[i].stmts, self.cflow_results[i][0])
-        return bc_to_cft(bc, self.source_lines)
+    # the model's best skeleton for the ith code object
+    def make_cft(self, i: int) -> SkeletonTemplate:
+        skeletons = self.cflow_results[i]
+        return SkeletonTemplate.for_request(self.ordered_bytecodes[i], self.cflow_requests[i], skeletons[0] if skeletons else None)
 
     def update_source_lines(self):
         self.source_lines = list(itertools.chain.from_iterable(self.translation_results))
@@ -481,7 +476,7 @@ class Decompiler:
     def correct_cflow(self, i: int, from_comp_error=False) -> bool:
         bc = self.ordered_bytecodes[i]
         original = self.source_context.cfts[bc.codeobj]
-        if not isinstance(original, SkeletonTemplate):
+        if self.cflow_requests[i] is None:
             return False
         logger.info(f"Trying to fix control flow for {bc.name}")
         try:
@@ -508,8 +503,6 @@ class Decompiler:
     # try to correct the segmentation of the ith code object
     def correct_segmentation(self, i: int, from_comp_error=False) -> bool:
         if len(self.segmentation_results) <= i or not self.segmentation_results[i]:
-            return False
-        if isinstance(self.source_context.cfts[self.ordered_bytecodes[i].codeobj], MetaTemplate):
             return False
         logger.info(f"Trying to fix segmentation for {self.ordered_bytecodes[i].name}")
         original_prediction = [r["entity"] for r in self.segmentation_results[i]]
@@ -541,11 +534,10 @@ class Decompiler:
                     raise
                 self.source_context.update_lines(self.source_lines)
                 bc = self.ordered_bytecodes[i]
-                # skeletons refer to the old statements, so predict again; templates follow the new lines by themselves
-                if isinstance(self.source_context.cfts[bc.codeobj], SkeletonTemplate):
-                    self.cflow_requests[i] = cflow_request(bc, self.source_lines)
-                    self.cflow_results[i] = self.predict_skeletons([self.cflow_requests[i]])[0]
-                    self.source_context.update_cft(bc, self.make_cft(i))
+                # skeletons refer to the old statements, so predict again
+                self.cflow_requests[i] = cflow_request(bc, self.source_lines)
+                self.cflow_results[i] = self.predict_skeletons([self.cflow_requests[i]])[0]
+                self.source_context.update_cft(bc, self.make_cft(i))
                 self.reconstruct_source()
                 equivalence_results = self.check_reconstruction(self.indented_source)
                 accepted = self.accepts(i, equivalence_results, passing, from_comp_error)

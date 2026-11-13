@@ -7,7 +7,7 @@ import torch
 
 from dataset_generation.bytecode2cflow import make_examples
 from pylingual.control_flow_reconstruction.model_view import INPUT_TOKENS, CflowRequest
-from pylingual.control_flow_reconstruction.templates.Skeleton import SkeletonTemplate
+from pylingual.control_flow_reconstruction.skeleton_template import SkeletonTemplate
 from pylingual.control_flow_reconstruction.transition import SPECIAL, TransitionConfig, TransitionModel
 from pylingual.decompiler import has_comp_error
 from pylingual.editable_bytecode import PYCFile
@@ -50,7 +50,7 @@ def test_save_and_load(tmp_path):
 
 
 def test_decompiler_with_transition_model(tmp_path):
-    """A CONTROL_FLOW_MODEL with ARCH transition: the decompiler takes its skeletons, right or not, never the templates."""
+    """A CONTROL_FLOW_MODEL with ARCH transition: the decompiler takes its skeletons, right or not."""
     model_dir = tmp_path / "model"
     tiny_model().save_pretrained(model_dir)
     config = {"REPO": str(model_dir), "REVISION": "main", "ARCH": "transition"}

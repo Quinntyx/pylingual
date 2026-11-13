@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import itertools
-from typing import TYPE_CHECKING
+from itertools import chain
+from typing import TYPE_CHECKING, override
 from pathlib import Path
 
 import networkx as nx
 import pydot
 
-from pylingual.editable_bytecode import EditableBytecode
+from pylingual.editable_bytecode import EditableBytecode, Inst
 from pylingual.utils.lists import flatten
-from .cft import ControlFlowTemplate, EdgeKind, InstTemplate, MetaTemplate
-from .templates.Block import BlockTemplate
+from .cft import ControlFlowTemplate, EdgeCategory, EdgeKind, InstTemplate, MetaTemplate, indent_str, out_edge_dict
+from .source import SourceContext, SourceLine
 
 if TYPE_CHECKING:
     DiGraph_CFT = nx.DiGraph[ControlFlowTemplate]
@@ -225,3 +226,75 @@ class CFG(DiGraph_CFT):
         start_nodes = [n for n in cdg.nodes if cdg.in_degree(n) == 0 and n != self.start]
         cdg.add_edges_from(((self.start, n) for n in start_nodes), kind=EdgeKind.Fall)
         return cdg
+
+
+# basic blocks: the equivalence check compares code objects block by block
+class BlockTemplate(ControlFlowTemplate):
+    members: list[ControlFlowTemplate]
+
+    def __init__(self, members: list[ControlFlowTemplate]):
+        self.members = members  # type: ignore
+        self.offset = members[0].offset if members else -1
+        self._pos = sum((x._pos for x in members), start=[])
+        self.header_lines = []
+        self.blame = members[0].blame
+
+    @staticmethod
+    def match_all(cfg: CFG):
+        it, cfg.iterate = cfg.iterate, lambda: None
+        for node in list(cfg.nodes):
+            if isinstance(node, MetaTemplate) or node not in cfg.nodes:
+                continue
+            BlockTemplate.try_match(cfg, node)
+        cfg.iterate = it
+
+    @override
+    @classmethod
+    def try_match(cls, cfg, node) -> ControlFlowTemplate | None:
+        members: list[ControlFlowTemplate] = []
+        out = out_edge_dict(cfg, node)
+        exc = out[EdgeCategory.Exception]
+        current = node
+        while True:
+            if out[EdgeCategory.Exception] != exc:
+                break
+            if current != node and cfg.in_degree(current) > 1:  # type: ignore
+                break
+            if current in members:
+                break
+            members.append(current)
+            next = out[EdgeCategory.Natural]
+            if next is None:
+                break
+            if cfg.get_edge_data(current, next).get("kind") != EdgeKind.Fall:
+                break
+            if out[EdgeCategory.Conditional] is not None:
+                break
+            out = out_edge_dict(cfg, next)
+            current = next
+        if len(members) < 2:
+            return None
+        template = BlockTemplate([x for m in members for x in (m.members if isinstance(m, BlockTemplate) else [m])])
+        in_edges = [(src, template, prop) for src, _, prop in cfg.in_edges(node, data=True) if src not in members]
+        out_edges = [(template, template, prop) if dst in members else (template, dst, prop) for _, dst, prop in cfg.out_edges(members[-1], data=True)]
+        cfg.remove_nodes_from(members)
+        cfg.add_node(template)
+        cfg.add_edges_from(chain(in_edges, out_edges))
+        cfg.iterate()
+        return template
+
+    @override
+    def to_indented_source(self, source: SourceContext) -> list[SourceLine]:
+        return list(chain.from_iterable(source[m] for m in self.members))
+
+    @override
+    def get_instructions(self) -> list[Inst]:
+        insts: list[Inst] = []
+        for member in self.members:
+            insts.extend(member.get_instructions())
+        return insts
+
+    @override
+    def __repr__(self) -> str:
+        components = indent_str("\n".join(repr(member) for member in self.members))
+        return f"BlockTemplate[\n{components}]"

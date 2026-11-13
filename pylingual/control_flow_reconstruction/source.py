@@ -72,7 +72,7 @@ class SourceContext:
         self.lines = [x.strip() for x in lines]
         self.cfts = cfts
         self.cache: dict[ControlFlowTemplate, list[SourceLine]] = {}
-        # lines read while rendering each code object's templates, so cached sources can be kept when other lines change
+        # lines read while rendering each code object, so cached sources can be kept when other lines change
         self.reads: dict[Code3, dict[Inst, str | None]] = defaultdict(dict)
         self.rendering: list[Code3] = []
         self.header_lines: list[SourceLine] = []

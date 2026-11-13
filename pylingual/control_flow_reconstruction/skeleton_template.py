@@ -8,14 +8,14 @@ from typing import TYPE_CHECKING, override
 from xdis import iscode
 
 from pylingual.editable_bytecode.utils import comprehension_names
-from ..cft import ControlFlowTemplate
-from ..model_view import KEYWORD_LINES
-from ..skeleton import CLOSE, KEYWORD_TEXT, LOOP, OPEN, parse_ref
-from ..source import SourceContext, SourceLine, sanitize_line
+from .cft import ControlFlowTemplate
+from .model_view import KEYWORD_LINES
+from .skeleton import CLOSE, KEYWORD_TEXT, LOOP, OPEN, parse_ref
+from .source import SourceContext, SourceLine, sanitize_line
 
 if TYPE_CHECKING:
     from pylingual.editable_bytecode import EditableBytecode
-    from ..model_view import Statement
+    from .model_view import CflowRequest, Statement
 
 # clauses and the block headers they may follow; "try else" is the else of a try
 CLAUSE_AFTER = {"except": ("try", "except"), "else": ("if", "elif", "for", "while", "except"), "finally": ("try", "except", "try else")}
@@ -87,6 +87,17 @@ class SkeletonTemplate(ControlFlowTemplate):
     @override
     def __repr__(self):
         return f"SkeletonTemplate[{' '.join(self.tokens)}]"
+
+    @staticmethod
+    def for_request(bc: EditableBytecode, request: CflowRequest | None, tokens: list[str] | None = None) -> SkeletonTemplate:
+        """
+        The control flow of `bc`: the skeleton `tokens` for its request, or its statements in order without them.
+        A code object without a request has nothing to structure: comprehensions and lambdas are written inside their
+        parent's line, and an empty body gets `pass`.
+        """
+        if request is None:
+            return SkeletonTemplate(bc, [], [])
+        return SkeletonTemplate(bc, request.stmts, request.in_order() if tokens is None else tokens)
 
     def stmt_lines(self, stmt: Statement, source: SourceContext, depth: int, header: str | None, in_loop: bool) -> list[SourceLine]:
         """Lines of a statement (`header` replaces its first line), and placeholders for code objects it defines."""

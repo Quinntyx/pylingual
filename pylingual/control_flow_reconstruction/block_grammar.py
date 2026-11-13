@@ -1,7 +1,7 @@
 """
 The block structure Python accepts, as a pushdown automaton over skeletons in source order (see skeleton.py).
 
-Every skeleton the automaton accepts renders (templates/Skeleton.py) to source that compiles, as long as each statement
+Every skeleton the automaton accepts renders (skeleton_template.py) to source that compiles, as long as each statement
 line is valid on its own and the statements fit together (`consistent`). It checks that:
     - header statements open a block and other statements do not; a while header comes after LOOP, so every
       structure has one spelling

@@ -142,8 +142,8 @@ class ControlFlowPredictor:
     renders to source that compiles. A model implements `_generate` and `from_pretrained`, and is chosen by the ARCH of
     a CONTROL_FLOW_MODEL entry (see PREDICTORS).
 
-    There is no template fallback: every request the model cannot predict (too large, failed, no candidate in the
-    grammar) gets its statements in order, with the blocks BlockGrammar.complete gives them.
+    Every request gets a skeleton: one the model cannot predict (too large, failed, no candidate in the grammar) gets
+    its statements in order (CflowRequest.in_order).
 
     :param max_stmts: Requests with more statements are not predicted by the model
     :param max_input_tokens: Requests with longer inputs are not predicted by the model
@@ -166,8 +166,8 @@ class ControlFlowPredictor:
     def __call__(self, requests: list[CflowRequest | None], num_beams: int = 1, check_timeout: callable = None) -> list[list[list[str]] | None]:
         """
         Candidate skeletons (source order, best first) for each request, all accepted by its block grammar.
-        Statements in order for inputs over the model's limits and when the model fails or gives no valid skeleton.
-        None for no request, and when no skeleton fits (inconsistent shapes).
+        Statements in order for inputs over the model's limits and when the model fails or gives no valid skeleton, and
+        without blocks when no skeleton fits (inconsistent shapes, from a mistranslation). None only for no request.
         """
         results = [None] * len(requests)
         todo = []
@@ -199,11 +199,7 @@ class ControlFlowPredictor:
             logger.info(f"Control flow model failed on {len(batch)} code objects, using statement order ({error})")
         for i, request in enumerate(requests):
             if results[i] is None and request is not None:
-                try:
-                    grammar = request.grammar()
-                    results[i] = [grammar.complete(grammar.start())]
-                except Exception as e:  # inconsistent shapes: no skeleton fits
-                    logger.info(f"No in-order skeleton for a code object ({e!r})")
+                results[i] = [request.in_order()]
         return results
 
 
@@ -338,13 +334,15 @@ def load_models(
     redis_port: int = 1679,
     token=False,
     device: torch.device | None = None,
-) -> tuple[transformers.Pipeline, CacheTranslator, ControlFlowPredictor | None]:
+) -> tuple[transformers.Pipeline, CacheTranslator, ControlFlowPredictor]:
     logger.info(f"Loading models for {version}...")
     with config_file.open() as f:
         config = yaml.safe_load(f)
         seg_config = config[f"v{version}"]["SEGMENTATION_MODEL"]
         stmt_config = config[f"v{version}"]["STATEMENT_MODEL"]
         cflow_config = control_flow_config(config, version)
+    if cflow_config is None:
+        raise ValueError(f"{config_file} gives no CONTROL_FLOW_MODEL for {version}: control flow reconstruction needs a control flow model")
 
     #################################
     # Segmentation model components #
@@ -407,12 +405,10 @@ def load_models(
 
     translator = CacheTranslator(translation_model, translation_tokenizer, python_version=version.as_str(), redis_cache_server_ip=redis_cache_server_ip, redis_port=redis_port, device=device)
 
-    ##################################################
-    # Control flow model components, when configured #
-    ##################################################
-    cflow_model = None
-    if cflow_config is not None:
-        predictor = PREDICTORS[cflow_config.get("ARCH", "t5")]
-        cflow_model = predictor.from_pretrained(cflow_config["REPO"], revision=cflow_config.get("REVISION"), token=token, device=device)
+    ############################
+    # Control flow model       #
+    ############################
+    predictor = PREDICTORS[cflow_config.get("ARCH", "t5")]
+    cflow_model = predictor.from_pretrained(cflow_config["REPO"], revision=cflow_config.get("REVISION"), token=token, device=device)
 
     return segmenter, translator, cflow_model

@@ -7,11 +7,10 @@ import numpy as np
 import pytest
 
 from dataset_generation.bytecode2cflow import assign_lines
-from pylingual.control_flow_reconstruction.model_view import encode_code_object, split_statements
+from pylingual.control_flow_reconstruction.model_view import cflow_request, encode_code_object, split_statements
 from pylingual.control_flow_reconstruction.skeleton import BLOCK_KEYWORDS, CLOSE, KEYWORD_TEXT, LOOP, OPEN, PLACE, SkeletonGrammar, from_model_order, parse_ref, ref, to_model_order
 from pylingual.control_flow_reconstruction.source import SourceContext
-from pylingual.control_flow_reconstruction.structure import bc_to_cft
-from pylingual.control_flow_reconstruction.templates.Skeleton import SkeletonTemplate, parse_skeleton
+from pylingual.control_flow_reconstruction.skeleton_template import SkeletonTemplate, parse_skeleton
 from pylingual.editable_bytecode import PYCFile
 from pylingual.utils.generate_bytecode import _uv_python, compile_version
 from pylingual.utils.version import PythonVersion
@@ -52,7 +51,7 @@ def test_rerender_after_update_lines(tmp_path):
     src = tmp_path / "f.py"
     src.write_text("def f(a):\n    if a:\n        print(1)\n    else:\n        print(2)\n    print(3)\n")
     pyc, lines = compile_marked(src, tmp_path, PythonVersion(sys.version_info[:2]))
-    cfts = {bc.codeobj: bc_to_cft(bc, lines) for bc in pyc.iter_bytecodes()}
+    cfts = {bc.codeobj: SkeletonTemplate.for_request(bc, cflow_request(bc, lines)) for bc in pyc.iter_bytecodes()}
     f = next(bc for bc in pyc.iter_bytecodes() if bc.codeobj.co_name == "f")
     stmts = split_statements(f)
     assert len(stmts) == 4
@@ -63,7 +62,7 @@ def test_rerender_after_update_lines(tmp_path):
     ctx.update_lines([x.replace("print(2)", "print(5)") for x in lines])
     assert "    else:\n        print(5)" in str(ctx)
     skeleton = ctx.cfts[f.codeobj]
-    ctx.update_cft(f, bc_to_cft(f, lines))
+    ctx.update_cft(f, SkeletonTemplate.for_request(f, cflow_request(f, lines)))
     ctx.restore(snapshot)
     assert ctx.cfts[f.codeobj] is skeleton and "    else:\n        print(2)" in str(ctx)
 

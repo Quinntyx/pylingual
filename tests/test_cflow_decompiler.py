@@ -2,11 +2,9 @@ import sys
 
 import pytest
 
-from pylingual.control_flow_reconstruction.source import SourceContext
-from pylingual.control_flow_reconstruction.structure import bc_to_cft
-from pylingual.control_flow_reconstruction.templates.Skeleton import SkeletonTemplate
+from pylingual.control_flow_reconstruction.skeleton_template import SkeletonTemplate
 from pylingual.decompiler import Decompiler, has_comp_error
-from pylingual.models import ControlFlowPredictor
+from pylingual.models import ControlFlowPredictor, load_models
 from pylingual.utils.version import PythonVersion
 
 from test_cflow_model_view import compile_marked
@@ -110,9 +108,39 @@ def test_model_errors_give_statement_order(tmp_path):
         decompile_with(StubPredictor([RIGHT], error=TimeoutError()), tmp_path)
 
 
-def test_no_model_uses_templates_only(tmp_path):
-    d = decompile_with(None, tmp_path)
-    assert d.cflow_requests == [None, None] and d.cflow_results == [None, None]
-    templates = SourceContext(d.pyc, d.source_lines, {bc.codeobj: bc_to_cft(bc, d.source_lines) for bc in d.ordered_bytecodes})
-    templates.header_lines = d.source_context.header_lines
-    assert str(d.source_context) == str(templates)
+class InOrderPredictor(ControlFlowPredictor):
+    """Statements in order for every request, as if the model failed on all of them."""
+
+    def __init__(self):
+        self.max_stmts, self.max_input_tokens = 512, 2048
+
+    def _generate(self, batch, num_beams):
+        return [[r.in_order()] for r in batch]
+
+
+def test_code_objects_without_requests(tmp_path):
+    """Comprehensions and lambdas stay in their parent's line and an empty body gets `pass`."""
+    source = "def f(a):\n    return [x for x in a if x]\n\n\ndef g():\n    pass\n\n\nh = lambda y: {k: y for k in y}\n"
+    d = decompile_with(InOrderPredictor(), tmp_path, source)
+    names = [bc.codeobj.co_name for bc in d.ordered_bytecodes]
+    assert all(d.cflow_requests[i] is None for i, n in enumerate(names) if n.startswith("<") and n != "<module>")
+    assert all(isinstance(cft, SkeletonTemplate) for cft in d.source_context.cfts.values())
+    assert "return [x for x in a if x]" in d.indented_source and "h = lambda y: {k: y for k in y}" in d.indented_source
+    assert d.equivalence_results and all(r.success for r in d.equivalence_results)
+
+
+def test_no_skeleton_fits_a_mistranslation(tmp_path):
+    """A decorator without a definition fits no skeleton, so the statements go in order without blocks."""
+    d = decompile_with(InOrderPredictor(), tmp_path, mistranslated={1: "@decorator"})
+    module = [bc.codeobj.co_name for bc in d.ordered_bytecodes].index("<module>")
+    assert d.cflow_results[module] == [d.cflow_requests[module].in_order()]
+    assert d.cflow_requests[module].in_order() == [f"<s{k}>" for k in range(d.cflow_requests[module].n)]
+
+
+def test_a_control_flow_model_is_required(tmp_path):
+    with pytest.raises(ValueError, match="control flow model"):
+        decompile_with(None, tmp_path)
+    config = tmp_path / "config.yaml"
+    config.write_text(f"v{VERSION}:\n  SEGMENTATION_MODEL: {{REPO: x, REVISION: main, TOKENIZER: x}}\n  STATEMENT_MODEL: {{REPO: x, REVISION: main, TOKENIZER: x}}\n")
+    with pytest.raises(ValueError, match="CONTROL_FLOW_MODEL"):
+        load_models(config, VERSION)

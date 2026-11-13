@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING
 from pylingual.editable_bytecode.control_flow_graph import bytecode_to_control_flow_graph
 from pylingual.utils.version import PythonVersion
 
-from .block_grammar import BlockGrammar, Shape, shape_of
+from .block_grammar import BlockGrammar, Shape, consistent, shape_of
 from .skeleton import ref
 
 if TYPE_CHECKING:
@@ -91,6 +91,16 @@ class CflowRequest:
 
     def grammar(self) -> BlockGrammar:
         return BlockGrammar(self.shapes, self.version)
+
+    def in_order(self) -> list[str]:
+        """
+        The statements in order, with the blocks BlockGrammar.complete gives them. When no skeleton fits the shapes (only
+        a mistranslation does that), the statements in order without blocks: the renderer drops the headers then.
+        """
+        if not consistent(self.shapes):
+            return [ref(k) for k in range(self.n)]
+        grammar = self.grammar()
+        return grammar.complete(grammar.start())
 
     def row(self) -> dict:
         """The request as dataset row fields."""
