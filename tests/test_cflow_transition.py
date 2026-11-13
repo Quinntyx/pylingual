@@ -9,6 +9,7 @@ from dataset_generation.bytecode2cflow import make_examples
 from pylingual.control_flow_reconstruction.model_view import INPUT_TOKENS, CflowRequest
 from pylingual.control_flow_reconstruction.templates.Skeleton import SkeletonTemplate
 from pylingual.control_flow_reconstruction.transition import SPECIAL, TransitionConfig, TransitionModel
+from pylingual.decompiler import has_comp_error
 from pylingual.editable_bytecode import PYCFile
 from pylingual.models import PREDICTORS, TransitionPredictor, control_flow_config
 from pylingual.utils.version import PythonVersion
@@ -49,7 +50,7 @@ def test_save_and_load(tmp_path):
 
 
 def test_decompiler_with_transition_model(tmp_path):
-    """A CONTROL_FLOW_MODEL with ARCH transition: the decompiler takes its skeletons."""
+    """A CONTROL_FLOW_MODEL with ARCH transition: the decompiler takes its skeletons, right or not, never the templates."""
     model_dir = tmp_path / "model"
     tiny_model().save_pretrained(model_dir)
     config = {"REPO": str(model_dir), "REVISION": "main", "ARCH": "transition"}
@@ -57,8 +58,9 @@ def test_decompiler_with_transition_model(tmp_path):
     d = decompile_with(predictor, tmp_path)
     f = [bc.codeobj.co_name for bc in d.ordered_bytecodes].index("f")
     assert d.cflow_results[f] and all(d.cflow_requests[f].grammar().accepts(s) for s in d.cflow_results[f])
-    assert d.equivalence_results and all(r.success for r in d.equivalence_results)
-    assert not isinstance(cft_of_f(d), SkeletonTemplate) or d.cflow_requests[f].grammar().accepts(cft_of_f(d).tokens)
+    # the untrained model's skeleton can be wrong, but it fits the grammar, so the source compiles
+    assert isinstance(cft_of_f(d), SkeletonTemplate) and d.cflow_requests[f].grammar().accepts(cft_of_f(d).tokens)
+    assert d.equivalence_results and not has_comp_error(d.equivalence_results)
 
 
 def test_shared_control_flow_config():

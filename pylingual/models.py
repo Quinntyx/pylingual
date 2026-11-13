@@ -142,8 +142,11 @@ class ControlFlowPredictor:
     renders to source that compiles. A model implements `_generate` and `from_pretrained`, and is chosen by the ARCH of
     a CONTROL_FLOW_MODEL entry (see PREDICTORS).
 
-    :param max_stmts: Requests with more statements are not predicted
-    :param max_input_tokens: Requests with longer inputs are not predicted
+    There is no template fallback: every request the model cannot predict (too large, failed, no candidate in the
+    grammar) gets its statements in order, with the blocks BlockGrammar.complete gives them.
+
+    :param max_stmts: Requests with more statements are not predicted by the model
+    :param max_input_tokens: Requests with longer inputs are not predicted by the model
     """
 
     BATCH_SIZE = 16
@@ -163,7 +166,8 @@ class ControlFlowPredictor:
     def __call__(self, requests: list[CflowRequest | None], num_beams: int = 1, check_timeout: callable = None) -> list[list[list[str]] | None]:
         """
         Candidate skeletons (source order, best first) for each request, all accepted by its block grammar.
-        None for no request, for inputs over the model's limits, and when the model fails or gives no valid skeleton.
+        Statements in order for inputs over the model's limits and when the model fails or gives no valid skeleton.
+        None for no request, and when no skeleton fits (inconsistent shapes).
         """
         results = [None] * len(requests)
         todo = []
@@ -189,10 +193,17 @@ class ControlFlowPredictor:
                 raise
             except Exception as e:
                 error = repr(e)
-            # handled outside the except block so tensors can be freed; these code objects use the templates
+            # handled outside the except block so tensors can be freed; these code objects get their statements in order
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-            logger.info(f"Control flow model failed on {len(batch)} code objects, using templates ({error})")
+            logger.info(f"Control flow model failed on {len(batch)} code objects, using statement order ({error})")
+        for i, request in enumerate(requests):
+            if results[i] is None and request is not None:
+                try:
+                    grammar = request.grammar()
+                    results[i] = [grammar.complete(grammar.start())]
+                except Exception as e:  # inconsistent shapes: no skeleton fits
+                    logger.info(f"No in-order skeleton for a code object ({e!r})")
         return results
 
 
@@ -240,9 +251,7 @@ class TransitionPredictor(ControlFlowPredictor):
     """
     Statement encoder and grammar action decoder (see control_flow_reconstruction/transition.py)
 
-    There is no template fallback: the model runs on inputs up to LIMIT_SCALE times the limits it was trained with, and
-    every request it cannot predict (too large, out of memory, failed) gets its statements in order, with the blocks
-    BlockGrammar.complete gives them.
+    The model runs on inputs up to LIMIT_SCALE times the limits it was trained with.
 
     :param model: The loaded TransitionModel, its config holds the limits it was trained with
     """
@@ -252,17 +261,6 @@ class TransitionPredictor(ControlFlowPredictor):
     def __init__(self, model, device="cpu"):
         super().__init__(self.LIMIT_SCALE * model.config.max_stmts, self.LIMIT_SCALE * model.config.max_input_tokens)
         self.model = model.to(device).eval()
-
-    def __call__(self, requests: list[CflowRequest | None], num_beams: int = 1, check_timeout: callable = None) -> list[list[list[str]] | None]:
-        results = super().__call__(requests, num_beams, check_timeout)
-        for i, request in enumerate(requests):
-            if results[i] is None and request is not None:
-                try:
-                    grammar = request.grammar()
-                    results[i] = [grammar.complete(grammar.start())]
-                except Exception as e:  # inconsistent shapes: no skeleton fits
-                    logger.info(f"No in-order skeleton for a code object ({e!r})")
-        return results
 
     @classmethod
     def from_pretrained(cls, repo: str, revision: str | None = None, token=False, device="cpu") -> TransitionPredictor:

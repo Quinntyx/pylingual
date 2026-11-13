@@ -418,7 +418,7 @@ class Decompiler:
                 translation_requests[-1] += bytecode_separator + model_view
         return translation_requests
 
-    # candidate skeletons for each request, None where the templates should be used
+    # candidate skeletons for each request, None where the templates should be used (no request, or no skeleton fits)
     def predict_skeletons(self, requests: list[CflowRequest | None], num_beams=1) -> list[list[list[str]] | None]:
         return self.cflow_model(requests, num_beams=num_beams, check_timeout=self.check_timeout)
 
@@ -476,8 +476,8 @@ class Decompiler:
             improved = not has_comp_error(results) and (r := self.result_for_bytecode(i, results)) is not None and r.success
         return improved and all((r := self.result_for_bytecode(j, results)) is not None and r.success for j in passing)
 
-    # try the control flow model's other candidates for the ith code object, then the templates
-    # if none passes, correct_segmentation tries other segmentations, asking the model again for each
+    # try the control flow model's other candidates for the ith code object; if none passes, the best one stays, since
+    # it fits the block grammar, and correct_segmentation tries other segmentations, asking the model again for each
     def correct_cflow(self, i: int, from_comp_error=False) -> bool:
         bc = self.ordered_bytecodes[i]
         original = self.source_context.cfts[bc.codeobj]
@@ -489,10 +489,8 @@ class Decompiler:
             previous_indented_source = self.indented_source
             # beam search only runs for code objects that fail
             beams = [tokens for tokens in self.predict_skeletons([self.cflow_requests[i]], num_beams=CFLOW_BEAMS)[0] or [] if tokens != original.tokens]
-            for tokens in [*beams, None]:
-                # the templates come last, built only if no beam passes
-                candidate = bc_to_cft(bc, self.source_lines) if tokens is None else SkeletonTemplate(bc, original.stmts, tokens)
-                self.source_context.update_cft(bc, candidate)
+            for tokens in beams:
+                self.source_context.update_cft(bc, SkeletonTemplate(bc, original.stmts, tokens))
                 self.reconstruct_source()
                 equivalence_results = self.check_reconstruction(self.indented_source)
                 if self.accepts(i, equivalence_results, passing, from_comp_error):

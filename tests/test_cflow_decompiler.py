@@ -69,32 +69,43 @@ def test_beam_fixes_greedy_skeleton(tmp_path):
     assert d.equivalence_results and all(r.success for r in d.equivalence_results)
 
 
-def test_templates_after_failing_beams(tmp_path):
+def f_index(d: Decompiler) -> int:
+    return [bc.codeobj.co_name for bc in d.ordered_bytecodes].index("f")
+
+
+def in_order(d: Decompiler) -> list[str]:
+    grammar = d.cflow_requests[f_index(d)].grammar()
+    return grammar.complete(grammar.start())
+
+
+def test_best_skeleton_stays_after_failing_beams(tmp_path):
+    """No template fallback: when no beam passes, the greedy skeleton, which fits the grammar, stays."""
     predictor = StubPredictor([NESTED, FLAT])
     d = decompile_with(predictor, tmp_path)
     assert predictor.beams == [1, 4]
-    assert not isinstance(cft_of_f(d), SkeletonTemplate)
-    assert d.equivalence_results and all(r.success for r in d.equivalence_results)
+    assert isinstance(cft_of_f(d), SkeletonTemplate) and cft_of_f(d).tokens == NESTED.split()
+    assert {r.bc_a.name: r.success for r in d.equivalence_results} == {"<module>": True, "<module>.f": False}
 
 
-def test_skeletons_outside_the_grammar_are_dropped(tmp_path):
+def test_skeletons_outside_the_grammar_give_statement_order(tmp_path):
     # FLAT leaves the if header without a block, EXCEPT_FIRST puts `except ValueError:` after a bare except
-    d = decompile_with(StubPredictor([FLAT]), tmp_path)
-    assert d.cflow_results[[bc.codeobj.co_name for bc in d.ordered_bytecodes].index("f")] is None
-    d = decompile_with(StubPredictor([EXCEPT_FIRST]), tmp_path, SOURCE_TRY)
-    assert d.cflow_results[[bc.codeobj.co_name for bc in d.ordered_bytecodes].index("f")] is None
+    for candidates, source in (([FLAT], SOURCE), ([EXCEPT_FIRST], SOURCE_TRY)):
+        d = decompile_with(StubPredictor(candidates), tmp_path, source)
+        assert d.cflow_results[f_index(d)] == [in_order(d)]
+        assert d.cflow_requests[f_index(d)].grammar().accepts(in_order(d))
 
 
-def test_templates_after_purging_another_code_object(tmp_path):
+def test_statement_order_after_purging_another_code_object(tmp_path):
+    # f's greedy skeleton is outside the grammar, so f keeps its statements in order (which compile) while g is purged
     d = decompile_with(StubPredictor([EXCEPT_FIRST]), tmp_path, SOURCE_TRY, {2: "1 = a"})
-    assert not isinstance(cft_of_f(d), SkeletonTemplate)
-    assert {r.bc_a.name: r.success for r in d.equivalence_results if not isinstance(r, Exception)} == {"<module>": True, "<module>.g": False, "<module>.f": True}
+    assert isinstance(cft_of_f(d), SkeletonTemplate) and cft_of_f(d).tokens == in_order(d)
+    results = {r.bc_a.name: r.success for r in d.equivalence_results if not isinstance(r, Exception)}
+    assert results["<module>"] and not results["<module>.g"] and "<module>.f" in results
 
 
-def test_model_errors_use_templates(tmp_path):
+def test_model_errors_give_statement_order(tmp_path):
     d = decompile_with(StubPredictor([RIGHT], error=RuntimeError("boom")), tmp_path)
-    assert not isinstance(cft_of_f(d), SkeletonTemplate)  # the straight-line module needs no model
-    assert all(r.success for r in d.equivalence_results)
+    assert isinstance(cft_of_f(d), SkeletonTemplate) and cft_of_f(d).tokens == in_order(d)
     with pytest.raises(TimeoutError):
         decompile_with(StubPredictor([RIGHT], error=TimeoutError()), tmp_path)
 
