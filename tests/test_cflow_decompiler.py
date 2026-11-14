@@ -3,7 +3,7 @@ import sys
 import pytest
 
 from pylingual.control_flow_reconstruction.skeleton_template import SkeletonTemplate
-from pylingual.decompiler import Decompiler, has_comp_error
+from pylingual.decompiler import CFLOW_BEAMS, Decompiler, has_comp_error
 from pylingual.models import ControlFlowPredictor, load_models
 from pylingual.utils.version import PythonVersion
 
@@ -62,7 +62,7 @@ def cft_of_f(d: Decompiler):
 def test_beam_fixes_greedy_skeleton(tmp_path):
     predictor = StubPredictor([NESTED, FLAT, RIGHT])
     d = decompile_with(predictor, tmp_path)
-    assert predictor.beams == [1, 4]  # beam search only for the failing code object
+    assert predictor.beams == [1, CFLOW_BEAMS]  # beam search only for the failing code object
     assert isinstance(cft_of_f(d), SkeletonTemplate) and cft_of_f(d).tokens == RIGHT.split()
     assert d.equivalence_results and all(r.success for r in d.equivalence_results)
 
@@ -80,7 +80,7 @@ def test_best_skeleton_stays_after_failing_beams(tmp_path):
     """No template fallback: when no beam passes, the greedy skeleton, which fits the grammar, stays."""
     predictor = StubPredictor([NESTED, FLAT])
     d = decompile_with(predictor, tmp_path)
-    assert predictor.beams == [1, 4]
+    assert predictor.beams == [1, CFLOW_BEAMS]
     assert isinstance(cft_of_f(d), SkeletonTemplate) and cft_of_f(d).tokens == NESTED.split()
     assert {r.bc_a.name: r.success for r in d.equivalence_results} == {"<module>": True, "<module>.f": False}
 
