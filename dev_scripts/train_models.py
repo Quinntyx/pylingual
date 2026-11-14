@@ -100,14 +100,35 @@ def train_statement(statement_config_path: pathlib.Path, logger: logging.Logger,
     )
 
 
-@click.command(help="Full tokenization and training pipeline for the segmentation and statement translation models.")
+def train_control_flow(control_flow_config_path: pathlib.Path, logger: logging.Logger, nnodes: int = 1, nproc_per_node: int = 1, rdzv_port: int = 29400, public: bool = False):
+    logger.info("training control flow model...")
+    subprocess.run(
+        [
+            "uv",
+            "run",
+            "torchrun",
+            f"--nnodes={nnodes}",
+            f"--nproc-per-node={nproc_per_node}",
+            "--rdzv-backend=c10d",
+            f"--rdzv-endpoint=localhost:{rdzv_port}",
+            pathlib.Path(__file__).parent / "control_flow" / "train_cflow.py",
+            *_public_flag(public),
+            control_flow_config_path,
+        ],
+        env=dict(os.environ, NCCL_P2P_DISABLE="1"),
+        check=True,
+    )
+
+
+@click.command(help="Full tokenization and training pipeline for the segmentation, statement translation and control flow models.")
 @click.option("--segmentation", type=str, default=None, help="The path to the segmentation model description JSON file.")
 @click.option("--statement", type=str, default=None, help="The path to the statement model description JSON file.")
+@click.option("--control-flow", type=str, default=None, help="The path to the control flow model description JSON file.")
 @click.option("--nnodes", type=int, default=1, help="Torchrun nnodes arg")
 @click.option("--nproc_per_node", type=int, default=1, help="Torchrun nproc_per_node arg")
 @click.option("--rdzv_port", "-p", type=int, default=29400, help="Port to use for torchrun rendezvous endpoint")
 @click.option("--public", is_flag=True, default=False, help="Make uploaded HuggingFace repos public (default: private)")
-def main(segmentation: str, statement: str, nnodes: int, nproc_per_node: int, rdzv_port: int, public: bool):
+def main(segmentation: str, statement: str, control_flow: str, nnodes: int, nproc_per_node: int, rdzv_port: int, public: bool):
     logger = get_logger("train-models")
 
     ### LOAD JSON
@@ -117,6 +138,7 @@ def main(segmentation: str, statement: str, nnodes: int, nproc_per_node: int, rd
     ### CONFIG_PATHS
     segmentation_config_path = pathlib.Path(segmentation).resolve() if segmentation is not None else None
     statement_config_path = pathlib.Path(statement).resolve() if statement is not None else None
+    control_flow_config_path = pathlib.Path(control_flow).resolve() if control_flow is not None else None
 
     logger.info("Dataset description JSON files loaded!")
 
@@ -135,6 +157,14 @@ def main(segmentation: str, statement: str, nnodes: int, nproc_per_node: int, rd
         logger.info("Statement model training complete!")
     else:
         logger.warning("Statement model configuration json path not provided in --statement; skipping statement model training...")
+
+    ### TRAIN CONTROL FLOW
+    if control_flow_config_path is not None:
+        logger.info("Control flow model training starting...")
+        train_control_flow(control_flow_config_path, logger, nnodes, nproc_per_node, rdzv_port, public)
+        logger.info("Control flow model training complete!")
+    else:
+        logger.warning("Control flow model configuration json path not provided in --control-flow; skipping control flow model training...")
 
     logger.info("Training pipeline complete!")
 

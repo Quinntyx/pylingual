@@ -1,0 +1,24 @@
+{
+    "name": "py312-cflow",
+    "version": [3, 12],
+    "save_to_dir": "./cache-dir/datasets",
+    "huggingface_user": "sample_user",
+
+    "data_requests":
+    [
+        {
+            "name": "synth",
+            "source_path": "./cache-dir/synth312",
+            "num_train": 19000,
+            "num_test": 500,
+            "num_valid": 500
+        },
+        {
+            "name": "real",
+            "source_path": "./dataset",
+            "num_train": 20000,
+            "num_test": 500,
+            "num_valid": 500
+        }
+    ]
+}

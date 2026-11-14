@@ -46,3 +46,40 @@ uv run train_models.py --statement <path to JSON>
 Once models are trained, update `../pylingual/decompiler_config.yaml` or create a separate config file by replacing the old models with the newly trained ones.
 
 [^1]: [pylingual models](https://huggingface.co/syssec-utd).
+
+## Control flow model
+
+The optional control flow model predicts how the translated statements of a code object nest, as a skeleton such as `<s0> { <s1> } else { <s2> }`. Its training data comes from synthetic programs plus a normal dataset JSON (`sample_jsons/py312-sample-control-flow-data.json`), and it is trained from a model JSON (`sample_jsons/py312-sample-control-flow.json`):
+
+```
+uv run -m dataset_generation.synthetic_source -o ./cache-dir/synth312 -n 20000 -v 3.12
+uv run prepare_dataset.py sample_jsons/py312-sample-control-flow-data.json --stage generate --stage compile --stage cflow
+uv run train_models.py --control-flow sample_jsons/py312-sample-control-flow.json --nproc_per_node 4
+```
+
+Real code can instead be collected from the dataset NAS, as for the shared-backbone models: a data request with a `corpus` (`pypi` or `csn`) gets its sources from the NAS train splits, without held-out sources or the sources of the eval dataset releases in the JSON's `collect` section, and only sources that compile with the dataset's version (see `dataset_generation/collect_sources.py`). `sample_jsons/py312-sample-control-flow-nas-data.json` collects 50k files, 90% PyPI and 10% CodeSearchNet:
+
+```
+uv run prepare_dataset.py sample_jsons/py312-sample-control-flow-nas-data.json --stage collect --stage generate --stage compile --stage cflow
+```
+
+Models are compared on the [PyLingual evaluation dataset](https://github.com/syssec-utd/pylingual_eval_dataset) v1 (`git clone --branch v1.1.0 --depth 1`), whose `python-3.x` directories `bench_cflow.py` reads directly.
+
+The transition model (`ARCH: transition`, `pylingual/control_flow_reconstruction/transition.py`) encodes the statements and writes the skeleton one grammar action at a time, pointing at statements instead of naming them. It trains from the same rows and model JSON format (`sample_jsons/py312-sample-control-flow-transition.json`, the config of the benched model; `--seed` sets the seed, 42 by default):
+
+```
+cd control_flow && uv run train_transition.py ../sample_jsons/py312-sample-control-flow-transition.json
+```
+
+One transition model can serve every version, as one model pair serves the translation stage: build a control flow dataset for each version, then train on all of them by listing every version's `cflow` dir in `dataset_dirs` (`sample_jsons/sample-control-flow-transition-unified.json`). The input carries each version's opcodes and the grammar takes each request's version, so the model needs no version token. The benched unified model was trained on the 150k sources of the shared-backbone corpus, 15k per version (13,500 PyPI, 1,500 CodeSearchNet), each source compiled for one version only. A NAS data JSON per version, with that version, its own `name`, `source_path`s and `seed`, and 15k files, collects a similar corpus, though the collect stage keeps sources apart only within one dataset.
+
+Batches hold up to `batch_size` rows, fewer for large code objects, so a 2048 statement code object fits in memory. The predictor runs the model on inputs up to 4x the config's `max_stmts` and `max_input_tokens`, and gives any request it cannot predict its statements in bytecode order, so every code object gets a skeleton.
+
+Every skeleton a model gives must fit the block grammar (`pylingual/control_flow_reconstruction/block_grammar.py`), Python's block structure as a pushdown automaton, so the source rendered from it compiles. The dataset rows carry the statement `shapes` and `version` the grammar needs. To compare models on the same files, with the gold segmentation and lines:
+
+```
+uv run bench_cflow.py ./cache-dir/datasets/py312-cflow/code/test --model <HuggingFace repo or directory> --out bench.json
+uv run bench_cflow.py ./cache-dir/datasets/py312-cflow/code/test --baseline
+```
+
+The decompiler needs a control flow model: add `CONTROL_FLOW_MODEL: {REPO: <HuggingFace repo or absolute path>, REVISION: main}` at the top level of `decompiler_config.yaml` for every version, or to one version to override it, with `ARCH: <name>` for a model other than the T5 one (see `PREDICTORS` in `pylingual/models.py`). Without one, loading the models fails. Code objects that fail the equivalence check try the model's other beams, then re-segmentation; if nothing passes, the best skeleton stays, since every skeleton fits the block grammar. Code objects without a request have nothing to structure: comprehensions and lambdas are written inside their parent's line, and an empty body gets `pass`. When a mistranslation leaves no skeleton that fits (a decorator without a definition), the statements go in order without blocks. Changing the output of `pylingual/control_flow_reconstruction/model_view.py` needs new models.

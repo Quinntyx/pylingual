@@ -1,0 +1,36 @@
+{
+    "name": "py312-cflow-nas",
+    "version": [3, 12],
+    "save_to_dir": "./cache-dir/datasets",
+    "huggingface_user": "sample_user",
+
+    "collect": {
+        "nas_root": "/syssec-nas1/pyc-research/datasets",
+        "index": "./cache-dir/nas-index.json.gz",
+        "exclude": [
+            {"repo": "https://github.com/syssec-utd/pylingual_eval_dataset", "ref": "v1.1.0"},
+            {"repo": "https://github.com/syssec-utd/pylingual_eval_dataset", "ref": "v2.0.1"}
+        ],
+        "seed": 20261029
+    },
+
+    "data_requests":
+    [
+        {
+            "name": "pypi",
+            "corpus": "pypi",
+            "source_path": "./cache-dir/nas-sources/pypi",
+            "num_train": 44100,
+            "num_test": 450,
+            "num_valid": 450
+        },
+        {
+            "name": "csn",
+            "corpus": "csn",
+            "source_path": "./cache-dir/nas-sources/csn",
+            "num_train": 4900,
+            "num_test": 50,
+            "num_valid": 50
+        }
+    ]
+}
