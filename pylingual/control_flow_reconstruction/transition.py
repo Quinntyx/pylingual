@@ -155,13 +155,38 @@ class TransitionModel(transformers.PreTrainedModel):
         positions = torch.arange(input_ids.shape[1], device=input_ids.device).expand_as(input_ids)
         x = self.embed(input_ids) * math.sqrt(d) + sinusoid(positions, d)
         x = x + (refs >= 0)[..., None] * self.ref_proj(sinusoid(refs.clamp(min=0), d))
-        memory = self.encoder(x, src_key_padding_mask=~attention_mask.bool())
+        memory = self.encoder(x, src_key_padding_mask=~attention_mask.bool()) if self.training else self.encode_inference(x, attention_mask)
         return memory, memory.gather(1, stmt_pos[..., None].expand(-1, -1, d))
+
+    def encode_inference(self, x, attention_mask):
+        """
+        The encoder as trained, without dropout, its attention by scaled_dot_product_attention: the memory efficient kernel
+        takes the padding mask, where nn.TransformerEncoder's inference fast path holds every [L, L] attention matrix (5 GB
+        for a batch of 16 long code objects) and, on CUDA with padding, departs from the training path by about 1e-3.
+        """
+        b, length, d = x.shape
+        heads = self.config.heads
+        mask = attention_mask.bool()[:, None, None, :]
+        for layer in self.encoder.layers:
+            attention = layer.self_attn
+            qkv = nn.functional.linear(layer.norm1(x), attention.in_proj_weight, attention.in_proj_bias)
+            q, k, v = qkv.view(b, length, 3, heads, d // heads).permute(2, 0, 3, 1, 4).unbind(0)
+            context = nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=mask).transpose(1, 2).reshape(b, length, d)
+            x = x + attention.out_proj(context)
+            x = x + layer.linear2(layer.activation(layer.linear1(layer.norm2(x))))
+        return self.encoder.norm(x)
+
+    def stmt_table(self, stmts):
+        """Decoder input vectors [B, N + 1, d] for no statement and statements 0..N-1."""
+        return torch.cat([self.no_stmt.expand(stmts.shape[0], 1, -1), self.stmt_proj(stmts)], 1)
 
     def step_inputs(self, stmts, feats):
         """Decoder inputs for `features` rows [B, T, 9], with statement vectors [B, N, d]."""
-        table = torch.cat([self.no_stmt.expand(stmts.shape[0], 1, -1), self.stmt_proj(stmts)], 1)
-        pick = lambda i: table.gather(1, (feats[..., i] + 1)[..., None].expand(-1, -1, table.shape[-1]))  # noqa: E731
+        table = self.stmt_table(stmts)
+        return self._step_inputs(lambda i: table.gather(1, (feats[..., i] + 1)[..., None].expand(-1, -1, table.shape[-1])), feats)
+
+    def _step_inputs(self, pick, feats):
+        """Decoder inputs for `features` rows, with `pick(i)` the table vectors of the statements in feature i."""
         prev = self.actions(feats[..., 0]) + pick(1)
         opener = self.actions(feats[..., 2]) + pick(3)
         frame = self.kinds(feats[..., 5]) + self.chains(feats[..., 6]) + self.flags(feats[..., 7]) + self.depths(feats[..., 8])
@@ -173,10 +198,38 @@ class TransitionModel(transformers.PreTrainedModel):
         """Action logits [B, T, N + len(TOKENS)] for decoder states `h`."""
         context, _ = self.attention(h, memory, memory, key_padding_mask=~attention_mask.bool(), need_weights=False)
         o = self.out_norm(h + context)
-        pointed = self.query(o) @ self.key(stmts).transpose(1, 2) / math.sqrt(self.config.d_model)
-        distance = (torch.arange(stmts.shape[1], device=h.device) - next_stmt[..., None]).clamp(0, DISTANCES - 1)
-        pointed = pointed + self.distance(o).gather(-1, distance)
+        return self._logits(o, self.query(o) @ self.key(stmts).transpose(1, 2), next_stmt)
+
+    def _logits(self, o, pointed, next_stmt):
+        """Action logits from the attended decoder states `o` and their unscaled pointing scores [B, T, N]."""
+        distance = (torch.arange(pointed.shape[-1], device=o.device) - next_stmt[..., None]).clamp(0, DISTANCES - 1)
+        pointed = pointed / math.sqrt(self.config.d_model) + self.distance(o).gather(-1, distance)
         return torch.cat([pointed, self.token_head(o)], -1).float()
+
+    def decoding_cache(self, memory, stmts, attention_mask) -> tuple[torch.Tensor, ...]:
+        """
+        What every decoding step of a request reuses, once per request rather than per beam and step: the attention's
+        keys and values of the encoder states [R, heads, L, d / heads], the padding mask, the statement table and the
+        pointing keys of the statements.
+        """
+        d, heads = self.config.d_model, self.config.heads
+        r, length, _ = memory.shape
+        kv = nn.functional.linear(memory, self.attention.in_proj_weight[d:], self.attention.in_proj_bias[d:])
+        k, v = kv.view(r, length, 2, heads, d // heads).permute(2, 0, 3, 1, 4).unbind(0)
+        return k, v, attention_mask.bool()[:, None, None, :], self.stmt_table(stmts), self.key(stmts)
+
+    def decode_step(self, cache, feats, state, k):
+        """Action logits [R * k, N + len(TOKENS)] of one step for `features` rows [R * k, 1, 9], k rows per request."""
+        keys, values, mask, table, pointing = cache
+        r, n1, d = table.shape
+        heads = self.config.heads
+        flat, offset = table.reshape(r * n1, d), (torch.arange(r * k, device=feats.device) // k * n1)[:, None] + 1
+        h, state = self.lstm(self._step_inputs(lambda i: flat[offset + feats[..., i]], feats), state)
+        q = nn.functional.linear(h, self.attention.in_proj_weight[:d], self.attention.in_proj_bias[:d]).view(r, k, heads, d // heads).transpose(1, 2)
+        context = nn.functional.scaled_dot_product_attention(q, keys, values, attn_mask=mask).transpose(1, 2).reshape(r * k, 1, d)
+        o = self.out_norm(h + self.attention.out_proj(context))
+        pointed = (self.query(o).view(r, k, d) @ pointing.transpose(1, 2)).view(r * k, 1, n1 - 1)
+        return self._logits(o, pointed, feats[..., 4])[:, 0], state
 
     def forward(self, input_ids, refs, attention_mask, stmt_pos, features, allowed, labels=None):
         """Teacher forced: `features` and `allowed` of each step of the gold skeleton, whose actions are `labels`."""
@@ -207,7 +260,8 @@ class TransitionModel(transformers.PreTrainedModel):
         k, inputs = num_beams, self.batch_inputs(requests)
         memory, stmts = self.encode(**inputs)
         n = stmts.shape[1]
-        memory, stmts, mask = (x.repeat_interleave(k, 0) for x in (memory, stmts, inputs["attention_mask"]))
+        cache = self.decoding_cache(memory, stmts, inputs["attention_mask"])
+        del memory
         grammars = [r.grammar() for r in requests]
         limits = [4 * r.n + 16 for r in requests]
         beams = [[(0.0, Parse(g.start()), [])] for g in grammars]  # (log prob, parse, tokens) in slots r * k + j
@@ -223,9 +277,7 @@ class TransitionModel(transformers.PreTrainedModel):
                     allowed[r * k + j] = allowed_row(grammar, parse.state, n)
                     base[r * k + j] = score
             allowed[base == -math.inf, n] = True  # empty slots score -inf, not NaN
-            feats_t = torch.from_numpy(feats).to(self.device)[:, None]
-            h, state = self.lstm(self.step_inputs(stmts, feats_t), state)
-            logits = self.scores(h, memory, mask, stmts, feats_t[..., 4])[:, 0]
+            logits, state = self.decode_step(cache, torch.from_numpy(feats).to(self.device)[:, None], state, k)
             logits = logits.masked_fill(~torch.from_numpy(allowed).to(self.device), -math.inf).log_softmax(-1)
             total = (logits + torch.from_numpy(base).to(self.device)[:, None]).view(len(requests), -1)
             top_scores, top = (x.tolist() for x in total.topk(min(2 * k, total.shape[1]), -1))

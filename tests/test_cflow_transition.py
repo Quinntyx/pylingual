@@ -8,7 +8,7 @@ import torch
 from dataset_generation.bytecode2cflow import make_examples
 from pylingual.control_flow_reconstruction.model_view import INPUT_TOKENS, CflowRequest
 from pylingual.control_flow_reconstruction.skeleton_template import SkeletonTemplate
-from pylingual.control_flow_reconstruction.transition import SPECIAL, TransitionConfig, TransitionModel
+from pylingual.control_flow_reconstruction.transition import CHAINS, FRAME_KINDS, MAX_DEPTH, SPECIAL, TOKENS, TransitionConfig, TransitionModel
 from pylingual.decompiler import has_comp_error
 from pylingual.editable_bytecode import PYCFile
 from pylingual.models import PREDICTORS, TransitionPredictor, control_flow_config
@@ -61,6 +61,51 @@ def test_decompiler_with_transition_model(tmp_path):
     # the untrained model's skeleton can be wrong, but it fits the grammar, so the source compiles
     assert isinstance(cft_of_f(d), SkeletonTemplate) and d.cflow_requests[f].grammar().accepts(cft_of_f(d).tokens)
     assert d.equivalence_results and not has_comp_error(d.equivalence_results)
+
+
+def no_dropout(model: TransitionModel) -> TransitionModel:
+    for module in model.modules():
+        if isinstance(module, torch.nn.Dropout):
+            module.p = 0.0
+        if isinstance(module, torch.nn.MultiheadAttention):
+            module.dropout = 0.0
+    return model
+
+
+def test_inference_encoder_is_the_training_encoder():
+    """encode_inference gives the encoder states of the path the model trains with, at every real token of padded inputs."""
+    model = no_dropout(tiny_model())
+    torch.manual_seed(1)
+    x = torch.randn(3, 48, model.config.d_model)
+    mask = torch.ones(3, 48, dtype=torch.long)
+    mask[1, 40:], mask[2, 7:] = 0, 0
+    with torch.no_grad():
+        trained = model.train().encoder(x, src_key_padding_mask=~mask.bool())
+        inference = model.eval().encode_inference(x, mask)
+    real = mask.bool()
+    assert torch.allclose(trained[real], inference[real], atol=1e-5)
+
+
+def test_decode_step_is_the_teacher_forced_step():
+    """One cached decoding step for k rows per request gives the logits of step_inputs and scores on repeated tensors."""
+    model = tiny_model()
+    requests = [
+        CflowRequest.from_row({"input": "| <s0> K_cond POP_JUMP_IF_FALSE f+ <s2> | <s1> K_stmt | <s2> K_stmt RETURN_CONST nf", "shapes": "cond stmt stmt", "version": "3.12"}),
+        CflowRequest.from_row({"input": "| <s0> K_stmt | <s1> K_stmt RETURN_CONST nf", "shapes": "stmt stmt", "version": "3.12"}),
+    ]
+    k, rows = 3, 6
+    inputs = model.batch_inputs(requests)
+    rng = np.random.default_rng(0)
+    n = 3
+    highs = [len(TOKENS) + 3, n, len(TOKENS) + 3, n, n, len(FRAME_KINDS), len(CHAINS), 8, MAX_DEPTH]
+    feats = torch.from_numpy(np.stack([rng.integers(-1 if i in (1, 3, 4) else 0, h, rows) for i, h in enumerate(highs)], -1))[:, None]
+    with torch.no_grad():
+        memory, stmts = model.encode(**inputs)
+        cached, _ = model.decode_step(model.decoding_cache(memory, stmts, inputs["attention_mask"]), feats, None, k)
+        memory, stmts, mask = (t.repeat_interleave(k, 0) for t in (memory, stmts, inputs["attention_mask"]))
+        h, _ = model.lstm(model.step_inputs(stmts, feats))
+        reference = model.scores(h, memory, mask, stmts, feats[..., 4])[:, 0]
+    assert torch.allclose(cached, reference, atol=1e-5)
 
 
 def test_shared_control_flow_config():
