@@ -63,9 +63,9 @@ logger = logging.getLogger(__name__)
 
 bytecode_separator = " <SEP> "
 lno_regex = re.compile(r"(?<=line )\d+")
-# control flow model candidates tried for a failing code object; each one costs a recompile, and past 8 the decompiler is
-# slower than the control flow templates were on an RTX 2080 (16 to 32 stay faster on an RTX 4090)
-CFLOW_BEAMS = 8
+# control flow model candidates tried for a failing code object; each one costs a recompile. Files equivalent level off
+# at 16 to 20, and up to 32 the decompiler stays faster than the control flow templates were, on an RTX 2080 or 4090
+CFLOW_BEAMS = 16
 
 
 def has_comp_error(results: list[TestResult]) -> bool:
