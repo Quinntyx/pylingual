@@ -140,6 +140,8 @@ class Decompiler:
         self.cflow_model = cflow_model
         self.cflow_requests = []
         self.cflow_results = []
+        # code object index -> (its request, the candidates for it), predicted in one batch for every failing code object
+        self.beam_cache: dict[int, tuple[CflowRequest, list[list[str]] | None]] = {}
         self.start_time = time.time()
         self.unmask_cache = {}
         self.unmask_cache_size = None
@@ -206,8 +208,9 @@ class Decompiler:
                 if not (self.correct_cflow(bad_idx, from_comp_error=True) or self.correct_segmentation(bad_idx, from_comp_error=True)):
                     return
                 corrected_comp_errors.add(bad_idx)
-            failed = TrackedList(CORRECTION_STEP, [i for i in range(len(self.ordered_bytecodes)) if (result := self.result_for_bytecode(i, self.equivalence_results)) is not None and not result.success])
-            for i in failed:
+            failed = [i for i in range(len(self.ordered_bytecodes)) if (result := self.result_for_bytecode(i, self.equivalence_results)) is not None and not result.success]
+            self.prefetch_beams(failed)
+            for i in TrackedList(CORRECTION_STEP, failed):
                 if self.correct_cflow(i) or self.correct_segmentation(i):
                     continue
                 # other fixes...
@@ -420,6 +423,21 @@ class Decompiler:
     def predict_skeletons(self, requests: list[CflowRequest | None], num_beams=1) -> list[list[list[str]] | None]:
         return self.cflow_model(requests, num_beams=num_beams, check_timeout=self.check_timeout)
 
+    # the model's candidates for the failing code objects, in one batch rather than one call each in correct_cflow
+    def prefetch_beams(self, indices: list[int]):
+        todo = [i for i in indices if self.cflow_requests[i] is not None]
+        if todo:
+            for i, skeletons in zip(todo, self.predict_skeletons([self.cflow_requests[i] for i in todo], num_beams=CFLOW_BEAMS)):
+                self.beam_cache[i] = (self.cflow_requests[i], skeletons)
+
+    # the model's candidates for the ith code object's current request
+    def beams(self, i: int) -> list[list[str]] | None:
+        request = self.cflow_requests[i]
+        cached = self.beam_cache.get(i)
+        if cached is not None and cached[0] is request:
+            return cached[1]
+        return self.predict_skeletons([request], num_beams=CFLOW_BEAMS)[0]
+
     # the model's best skeleton for the ith code object
     def make_cft(self, i: int) -> SkeletonTemplate:
         skeletons = self.cflow_results[i]
@@ -484,7 +502,7 @@ class Decompiler:
             passing = self.passing_bytecodes()
             previous_indented_source = self.indented_source
             # beam search only runs for code objects that fail
-            beams = [tokens for tokens in self.predict_skeletons([self.cflow_requests[i]], num_beams=CFLOW_BEAMS)[0] or [] if tokens != original.tokens]
+            beams = [tokens for tokens in self.beams(i) or [] if tokens != original.tokens]
             for tokens in beams:
                 self.source_context.update_cft(bc, SkeletonTemplate(bc, original.stmts, tokens))
                 self.reconstruct_source()
@@ -515,29 +533,65 @@ class Decompiler:
         passing = self.passing_bytecodes()
         strategy = functools.partial(m_deep_top_k, priority_function=naive_confidence_priority, m=2, k=self.top_k + 1)
         # skip first prediction since it is the same as original
-        for k, prediction in enumerate(get_top_k_predictions(strategy, self.segmentation_results[i])[1:], start=1):
-            if prediction[0] != "B":
-                continue
+        candidates = [(k, prediction) for k, prediction in enumerate(get_top_k_predictions(strategy, self.segmentation_results[i])[1:], start=1) if prediction[0] == "B"]
+        bc = self.ordered_bytecodes[i]
+
+        def apply(prediction, translation=None):
+            # All source representations and instruction line numbers belong
+            # to the same candidate. Keep them together until it is checked.
+            for r, p in zip(self.segmentation_results[i], prediction):
+                r["entity"] = p
+            self.update_starts_line()
+            if translation is not None:
+                self.translation_results[i] = translation
+                self.update_source_lines()
+                self.unmask_lines()
+
+        def restore():
+            for r, p in zip(self.segmentation_results[i], original_prediction):
+                r["entity"] = p
+            for inst, starts_line in previous_starts:
+                inst.starts_line = starts_line
+            self.translation_results[i] = original_translation
+            self.cflow_requests[i], self.cflow_results[i] = previous_request, previous_result
+            self.source_lines = previous_lines
+            self.indented_source = previous_indented_source
+            self.source_context.restore(previous_context)
+
+        # translate and predict every candidate in one batch each, then check them in order as before
+        try:
+            translation_requests = []
+            for _, prediction in candidates:
+                apply(prediction)
+                translation_requests.append(self.make_translation_request(self.codeobj_instruction_lists[i], self.segmentation_results[i]))
+            try:
+                flat = self.translator(list(itertools.chain.from_iterable(translation_requests)), check_timeout=self.check_timeout) if translation_requests else []
+            except Exception as e:
+                e.add_note("From translation")
+                raise
+            translations = []
+            for request in translation_requests:
+                translations.append(flat[: len(request)])
+                flat = flat[len(request) :]
+            requests = []
+            for (_, prediction), translation in zip(candidates, translations):
+                apply(prediction, translation)
+                # skeletons refer to the old statements, so predict again
+                requests.append(cflow_request(bc, self.source_lines))
+            skeletons = self.predict_skeletons(requests) if requests else []
+        finally:
+            restore()
+
+        for (k, prediction), translation, request, skeleton in zip(candidates, translations, requests, skeletons):
             accepted = False
             try:
-                # All source representations and instruction line numbers belong
-                # to the same candidate. Keep them together until it is checked.
-                for r, p in zip(self.segmentation_results[i], prediction):
-                    r["entity"] = p
-                self.update_starts_line()
-                translation_request = self.make_translation_request(self.codeobj_instruction_lists[i], self.segmentation_results[i])
                 try:
-                    self.translation_results[i] = self.translator(translation_request, check_timeout=self.check_timeout)
-                    self.update_source_lines()
-                    self.unmask_lines()
+                    apply(prediction, translation)
                 except Exception as e:
                     e.add_note("From translation")
                     raise
                 self.source_context.update_lines(self.source_lines)
-                bc = self.ordered_bytecodes[i]
-                # skeletons refer to the old statements, so predict again
-                self.cflow_requests[i] = cflow_request(bc, self.source_lines)
-                self.cflow_results[i] = self.predict_skeletons([self.cflow_requests[i]])[0]
+                self.cflow_requests[i], self.cflow_results[i] = request, skeleton
                 self.source_context.update_cft(bc, self.make_cft(i))
                 self.reconstruct_source()
                 equivalence_results = self.check_reconstruction(self.indented_source)
@@ -549,15 +603,7 @@ class Decompiler:
                     return True
             finally:
                 if not accepted:
-                    for r, p in zip(self.segmentation_results[i], original_prediction):
-                        r["entity"] = p
-                    for inst, starts_line in previous_starts:
-                        inst.starts_line = starts_line
-                    self.translation_results[i] = original_translation
-                    self.cflow_requests[i], self.cflow_results[i] = previous_request, previous_result
-                    self.source_lines = previous_lines
-                    self.indented_source = previous_indented_source
-                    self.source_context.restore(previous_context)
+                    restore()
         logger.info(f"Could not fix segmentation for {self.ordered_bytecodes[i].name}")
         return False
 
