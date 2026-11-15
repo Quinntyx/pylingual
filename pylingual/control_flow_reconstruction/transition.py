@@ -157,6 +157,9 @@ class CapturedStep:
     of the same shape copies its cache tensors in, and each step copies in its lookups (with the parents) and its mask.
     """
 
+    # one stream for every capture (cuBLAS keeps a workspace per stream for good), and one memory pool, so the memory of
+    # a dropped step is reused by the next capture; steps run one at a time, so sharing the pool is safe
+    _stream: torch.cuda.Stream | None = None
     _pool = None
 
     def __init__(self, model: TransitionModel, cache: DecodingCache, requests: int, k: int, width: int):
@@ -172,16 +175,15 @@ class CapturedStep:
         self.h = torch.zeros(layers, rows, d, device=device)
         self.c = torch.zeros(layers, rows, d, device=device)
         self.staging = (torch.zeros(rows, columns, dtype=torch.long).pin_memory(), torch.zeros(rows, width + 1).pin_memory())
-        self.bytes = sum(t.numel() * t.element_size() for t in [*self.cache, self.index, self.masks, self.h, self.c] if isinstance(t, torch.Tensor))
-        side = torch.cuda.Stream()
+        if CapturedStep._stream is None:
+            CapturedStep._stream, CapturedStep._pool = torch.cuda.Stream(), torch.cuda.graph_pool_handle()
+        side = CapturedStep._stream
         side.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(side):  # warm up (workspaces, kernel choices) before capturing
             self.body()
         torch.cuda.current_stream().wait_stream(side)
-        if CapturedStep._pool is None:
-            CapturedStep._pool = torch.cuda.graph_pool_handle()
         self.graph = torch.cuda.CUDAGraph()
-        with torch.cuda.graph(self.graph, pool=CapturedStep._pool):
+        with torch.cuda.graph(self.graph, pool=CapturedStep._pool, stream=side):
             self.out = self.body()
         self.h.zero_()
         self.c.zero_()
@@ -225,7 +227,7 @@ class CapturedSteps:
 
     MAX_ROWS, MAX_STMTS, MAX_TOKENS = 64, 256, 512
     MIN_STMTS = 8  # a call whose longest request has fewer statements runs eagerly unless its shape is captured
-    BUDGET = 64 << 20  # bytes of fixed buffers kept
+    BUDGET = 64 << 20  # GPU memory the kept steps may hold: their buffers and graph memory
 
     def __init__(self):
         self.steps: OrderedDict[tuple, CapturedStep] = OrderedDict()
@@ -242,9 +244,14 @@ class CapturedSteps:
             return step
         if longest < self.MIN_STMTS:
             return Stepper(model, cache, requests, k, width)
-        step = self.steps[key] = CapturedStep(model, cache, requests, k, width)
+        torch.cuda.synchronize()
+        before = torch.cuda.memory_allocated()
+        step = CapturedStep(model, cache, requests, k, width)
+        torch.cuda.synchronize()
+        step.bytes = torch.cuda.memory_allocated() - before
+        self.steps[key] = step
         while sum(s.bytes for s in self.steps.values()) > self.BUDGET and len(self.steps) > 1:
-            self.steps.popitem(last=False)
+            self.steps.popitem(last=False)  # its memory goes back to the shared pool for the next capture
         return step
 
 
