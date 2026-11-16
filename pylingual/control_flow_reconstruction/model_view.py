@@ -223,9 +223,11 @@ def encode_code_object(bc: EditableBytecode, lines: list[str]) -> tuple[list[Sta
     for s in stmts:
         s.text = statement_text(s, lines)
         s.kind = statement_kind(s, s.text, loop_headers)
-        # a while loop jumps back to its header or its first statement (all but 9 of 1,550 loops in the 3.12 training
-        # set; the others always break or return, so never jump back)
-        s.loop_ok = bool({s.index, s.index + 1} & loop_starts)
+    last_break = max((s.index for s in stmts if s.kind == "K_break"), default=-1)
+    for s in stmts:
+        # a while loop jumps back to its header or its first statement, or else always breaks (all but 9 of 1,550 loops
+        # in the 3.12 training set jump back; the others always break or return)
+        s.loop_ok = bool({s.index, s.index + 1} & loop_starts) or s.index < last_break
         if s.kind == "K_none" and s.text in ("while True:", "while 1:") and not s.loop_ok:
             # a mistranslation (a docstring's NOP is often translated so), written as nothing rather than a loop
             s.text = ""
