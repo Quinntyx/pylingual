@@ -82,6 +82,9 @@ Options:
   -h, --help              Show this message and exit.
 ```
 
+Control flow is reconstructed by a control flow model, which the config file must give as a top-level
+`CONTROL_FLOW_MODEL` (`REPO`, `REVISION`, `ARCH`); see `dev_scripts/README.md` for training one.
+
 ## Demo
 
 ![demo gif](demo.gif)

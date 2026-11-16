@@ -1,3 +1,10 @@
+# Every version needs a control flow model: a top-level CONTROL_FLOW_MODEL serves them all, and a version's own
+# CONTROL_FLOW_MODEL overrides it. Loading the models fails without one.
+# CONTROL_FLOW_MODEL:
+#   REPO: <HuggingFace repo or absolute path>
+#   REVISION: main
+#   ARCH: transition
+
 v3.6:
   SEGMENTATION_MODEL:
     REPO: syssec-utd/py36-pylingual-v1-segmenter
