@@ -74,6 +74,7 @@ class Statement:
     silent: set = field(default_factory=set)  # merged cleanup instructions, whose line is not rendered
     kind: str = "K_none"  # see statement_kind
     text: str = ""  # translated line
+    loop_ok: bool = True  # a loop jumps back to it or the next statement, so it can head a while loop
 
 
 @dataclass
@@ -84,13 +85,14 @@ class CflowRequest:
     shapes: list[Shape]
     version: PythonVersion
     stmts: list[Statement] = field(default_factory=list)  # for rendering; empty when read from a dataset row
+    loops: frozenset[int] | None = None  # statements that may head a while loop; None (a dataset row): any
 
     @property
     def n(self) -> int:
         return len(self.shapes)
 
     def grammar(self) -> BlockGrammar:
-        return BlockGrammar(self.shapes, self.version)
+        return BlockGrammar(self.shapes, self.version, self.loops)
 
     def in_order(self) -> list[str]:
         """
@@ -214,11 +216,19 @@ def encode_code_object(bc: EditableBytecode, lines: list[str]) -> tuple[list[Sta
 
     # statements a later statement jumps back to (loop headers), for spotting fake `while True:` lines
     loop_headers = {stmt_of[dst] for s in stmts for inst in s.insts for _, dst, data in edges(inst) if data["type"] != "exception" and stmt_of.get(dst, s.index) < s.index}
+    # also counting a statement that jumps to itself (`while True: pass`), the statements a loop starts at
+    loop_starts = loop_headers | {s.index for s in stmts for inst in s.insts for _, dst, data in edges(inst) if data["type"] != "exception" and stmt_of.get(dst) == s.index and position[dst] <= position[inst]}
     tokens: list[str] = []
     handler = None  # exception handler in effect; a token is written only when it changes
     for s in stmts:
         s.text = statement_text(s, lines)
         s.kind = statement_kind(s, s.text, loop_headers)
+        # a while loop jumps back to its header or its first statement (all but 9 of 1,550 loops in the 3.12 training
+        # set; the others always break or return, so never jump back)
+        s.loop_ok = bool({s.index, s.index + 1} & loop_starts)
+        if s.kind == "K_none" and s.text in ("while True:", "while 1:") and not s.loop_ok:
+            # a mistranslation (a docstring's NOP is often translated so), written as nothing rather than a loop
+            s.text = ""
         tokens += [STMT_SEP, ref(s.index), s.kind]
         falls_through = False
         last_op = None  # an opcode repeated in a row is written once
@@ -267,4 +277,6 @@ def cflow_request(bc: EditableBytecode, lines: list[str]) -> CflowRequest | None
     if bc.is_comprehension:
         return None
     stmts, tokens = encode_code_object(bc, lines)
-    return CflowRequest(tokens, [shape_of(s.kind, s.text) for s in stmts], PythonVersion(bc.version), stmts) if stmts else None
+    if not stmts:
+        return None
+    return CflowRequest(tokens, [shape_of(s.kind, s.text) for s in stmts], PythonVersion(bc.version), stmts, frozenset(s.index for s in stmts if s.loop_ok))

@@ -67,6 +67,37 @@ def test_rerender_after_update_lines(tmp_path):
     assert ctx.cfts[f.codeobj] is skeleton and "    else:\n        print(2)" in str(ctx)
 
 
+def test_while_true_needs_a_loop(tmp_path):
+    """A `while True:` line on code no loop jumps back to (as a docstring's NOP is often translated) is a plain statement."""
+    if _uv_python(PythonVersion("3.12")) is None and sys.version_info[:2] != (3, 12):
+        pytest.skip("Python 3.12 not available")
+    src = tmp_path / "w.py"
+    src.write_text('class C:\n    """doc"""\n    """more doc"""\n    x = 1\n    def f(self):\n        pass\n\ndef g(q):\n    while True:\n        if q.get():\n            break\n')
+    pyc, lines = compile_marked(src, tmp_path, PythonVersion("3.12"))
+    shapes = {}
+    for bc in pyc.iter_bytecodes():
+        stmts, _ = encode_code_object(bc, lines)
+        mistranslated = [x if x.strip() != '"""more doc"""' else "    while True:" for x in lines]  # the NOP of the second string
+        shapes[bc.codeobj.co_name] = [str(s) for s in cflow_request(bc, mistranslated).shapes] if stmts else []
+    assert "while" not in shapes["C"]
+    assert "while" in shapes["g"]
+
+
+def test_while_needs_a_jump_back(tmp_path):
+    """A condition heads a while loop only if a loop jumps back to it or its first statement."""
+    if _uv_python(PythonVersion("3.12")) is None and sys.version_info[:2] != (3, 12):
+        pytest.skip("Python 3.12 not available")
+    src = tmp_path / "c.py"
+    src.write_text("def f(a, b):\n    if a:\n        b()\n    while b:\n        a()\n    return a\n")
+    pyc, lines = compile_marked(src, tmp_path, PythonVersion("3.12"))
+    f = next(bc for bc in pyc.iter_bytecodes() if bc.codeobj.co_name == "f")
+    request = cflow_request(f, lines)
+    assert [str(s) for s in request.shapes] == ["cond", "stmt", "cond", "stmt", "stmt+return"]
+    grammar = request.grammar()
+    assert grammar.accepts("<s0> { <s1> } loop <s2> { <s3> } <s4>".split())
+    assert not grammar.accepts("loop <s0> { <s1> } loop <s2> { <s3> } <s4>".split())  # nothing jumps back to the if
+
+
 def test_model_order_round_trip():
     for skeleton in ["try { <s0> } <s1> { loop <s2> { <s3> } } else { break } finally { <s4> }", "<s0> { <s1> } <s2>", "} else { loop <s7> {"]:
         assert from_model_order(to_model_order(skeleton.split())) == skeleton.split()

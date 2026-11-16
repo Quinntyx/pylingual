@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
+from collections.abc import Iterable
 from typing import NamedTuple
 
 from pylingual.utils.version import PythonVersion
@@ -251,10 +252,11 @@ class BlockGrammar:
     """
     The automaton for one code object whose statements have `shapes`. `allowed` gives the statements and other tokens
     that may come next, `step` takes one, `check` and `accepts` take a whole skeleton, and `complete` finishes one.
-    States are immutable and hashable.
+    States are immutable and hashable. `loops`, when given, are the statements that may head a while loop (from the
+    bytecode: a loop jumps back to its header or its first statement); otherwise any header that can be one.
     """
 
-    def __init__(self, shapes: list[Shape], version: PythonVersion | tuple | str):
+    def __init__(self, shapes: list[Shape], version: PythonVersion | tuple | str, loops: Iterable[int] | None = None):
         self.shapes = shapes
         self.n = len(shapes)
         self.version = PythonVersion(version)
@@ -270,6 +272,8 @@ class BlockGrammar:
         self.definitions = mask(lambda s: s.definition)
         self.prefixes = mask(lambda s: s.prefix)
         self.loop_headers = mask(lambda s: s.opener in ("cond", "while") and not s.inline)
+        if loops is not None:
+            self.loop_headers &= sum(1 << i for i in set(loops) if 0 <= i < self.n)
 
     def start(self) -> State:
         return State(0, (ROOT,))
@@ -358,7 +362,7 @@ class BlockGrammar:
         cases_left, bare_left = self.left(state, self.cases), self.left(state, self.bare_cases)
         stmts = 0
         for shape, group in self.groups.items():
-            group &= ~state.placed
+            group &= ~state.placed & (self.loop_headers if state.loop_next else self.all)
             if not group or not self.can_place(state, shape):
                 continue
             if shape.prefix and (top.kind != "root" or state.placed & ~self.prefixes):
