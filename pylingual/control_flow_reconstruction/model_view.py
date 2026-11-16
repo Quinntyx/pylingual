@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING
 from pylingual.editable_bytecode.control_flow_graph import bytecode_to_control_flow_graph
 from pylingual.utils.version import PythonVersion
 
-from .block_grammar import BlockGrammar, Shape, consistent, shape_of
+from .block_grammar import BlockGrammar, Shape, consistent, shape_of, soft_keyword
 from .skeleton import ref
 
 if TYPE_CHECKING:
@@ -132,6 +132,8 @@ def line_kind(text: str) -> str:
         return "K_def"
     if head in ("match", "case") and text.endswith(":"):
         return f"K_{head}"
+    if text.endswith(":") and (keyword := soft_keyword(text)):  # no space after the keyword: `match(x):`, `case[a, b]:`
+        return f"K_{keyword}"
     return "K_stmt"
 
 

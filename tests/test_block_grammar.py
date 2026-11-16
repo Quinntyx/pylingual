@@ -4,6 +4,7 @@ import sys
 import pytest
 
 from pylingual.control_flow_reconstruction.block_grammar import END, MAX_BLOCKS, BlockGrammar, Shape, consistent, shape_of
+from pylingual.control_flow_reconstruction.model_view import line_kind
 from pylingual.control_flow_reconstruction.skeleton import CLOSE, KEYWORD_TEXT, LOOP, OPEN, parse_ref, ref
 from pylingual.utils.generate_bytecode import UV_VERSIONS, CompileError, PyenvError, _uv_python, compile_version
 from pylingual.utils.version import PythonVersion
@@ -154,11 +155,30 @@ def test_shapes():
     assert str(shape_of("K_stmt", "for x in y: break")) == "inline:for"  # breaks its own loop
     assert str(shape_of("K_stmt", "while x: return")) == "inline:while+return"
     assert str(shape_of("K_stmt", "f(lambda: x)")) == "stmt"
+    assert str(shape_of("K_stmt", "case 2: x = 1")) == "inline:case"
     assert str(shape_of("K_continue", "continue")) == "stmt+continue"
     assert str(shape_of("K_stmt", "from __future__ import annotations")) == "prefix"
     for kind, text, _ in PALETTE:
         shape = shape_of(kind, text)
         assert Shape.parse(str(shape)) == shape
+
+
+def test_soft_keywords():
+    """match and case are keywords only in a match statement's headers; as names they start ordinary statements."""
+    names = ["case = case.strip()", "case.run()", "case: int = 1", "case[0] += 1", "case, x = y", "case(x)",
+             "match = re.match(p, s)", "match.group(1)", "match: re.Match = m", "match[0] = 1", "match(x)", "matches = 1", "cases = []"]
+    for text in names:
+        assert line_kind(text) == "K_stmt" and str(shape_of("K_stmt", text)) == "stmt", text
+    assert str(shape_of("K_stmt", "case = x; break")) == "stmt+break"
+    headers = {"match x:": "K_match", "match(x):": "K_match", "match[a, b]:": "K_match", "match -x:": "K_match",
+               "case 1:": "K_case", "case(1):": "K_case", "case[x, *_]:": "K_case", "case{'k': v}:": "K_case"}
+    for text, kind in headers.items():
+        assert line_kind(text) == kind and str(shape_of(kind, text)) == kind.removeprefix("K_"), text
+    assert str(shape_of("K_stmt", "case(1): x = 1")) == "inline:case"
+    # a match whose body uses its soft keywords as names fits a skeleton
+    lines = ["match(x):", "case[a, b]:", "case = a", "case _:", "match = b"]
+    shapes = [shape_of(line_kind(t), t) for t in lines]
+    assert consistent(shapes) and BlockGrammar(shapes, "3.12").accepts("<s0> { <s1> { <s2> } <s3> { <s4> } }".split())
 
 
 def test_rules():

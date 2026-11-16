@@ -118,6 +118,20 @@ def first_word(text: str) -> str:
     return words[0] if words else ""
 
 
+def soft_keyword(text: str) -> str | None:
+    """
+    `match` or `case` when `text` is that soft keyword's header (with its body for an inline case: `case 1: x`), even with
+    no space after it (`match(x):`). None otherwise, as when it is a name: `case = x`, `match.group(1)`.
+    """
+    for word in ("match", "case"):
+        rest = text.removeprefix(word)
+        if rest == text or ("_" + rest[:1]).isidentifier():  # another word, or the bare name
+            continue
+        src = text + "\n    case _: pass" if word == "match" else "match 0:\n    " + text + ("\n        pass" if text.endswith(":") else "")
+        return word if parse(src) is not None else None
+    return None
+
+
 def jumps_of(tree: ast.AST) -> frozenset[str]:
     """break / continue outside the loops in `tree`, and return, not counting nested functions and classes."""
     found = set()
@@ -165,6 +179,8 @@ def shape_of(kind: str, text: str) -> Shape:
         return Shape(definition=True)
     if text.startswith(("from __future__ import", "__doc__ = ")):
         return Shape(prefix=True)
+    if text.startswith(("match", "case")):
+        word = soft_keyword(text)  # soft keywords: None when a name starts the statement (`case = x`)
     inline = not text.endswith(":")
     if kind in KIND_OPENERS or (kind == "K_stmt" and inline and word in INLINE_OPENERS):
         opener = KIND_OPENERS.get(kind, word)
