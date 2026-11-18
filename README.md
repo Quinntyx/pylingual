@@ -85,6 +85,39 @@ Options:
 Control flow is reconstructed by a control flow model, the `CONTROL_FLOW_MODEL` of the config file; see
 `dev_scripts/README.md` for training one.
 
+## Benchmark
+
+End to end against `dev` at [`aca827d`](https://github.com/syssec-utd/pylingual/commit/aca827d), which uses control
+flow templates, on the PyLingual v1 and v2 evaluation sets: 65,119 `.pyc` files across Python 3.6–3.15. A file counts
+as equivalent only if every code object in it recompiles to equivalent bytecode in a fresh interpreter of its version.
+Each arm used the models its own config names. Both ran on the same RTX 4090s, alternating which arm went first on each
+chunk of files, with a 300 s timeout per file.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/benchmark-vs-dev-dark.svg">
+  <img alt="Files equivalent and time per file by Python version, dev vs. the control flow model" src="docs/benchmark-vs-dev.svg">
+</picture>
+
+| Python | Files | dev | Control flow model | Δ pp | Files gained / lost | dev, per file | Control flow model, per file | Time |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 3.6 | 5,886 | 75.79% | **84.13%** | +8.34 | +500 / −9 | 1.66 s | **1.64 s** | 0.99× |
+| 3.7 | 6,147 | 73.45% | **81.60%** | +8.15 | +510 / −9 | 1.56 s | **1.54 s** | 0.99× |
+| 3.8 | 6,271 | 71.11% | **79.11%** | +8.01 | +513 / −11 | **1.58 s** | 1.62 s | 1.02× |
+| 3.9 | 6,188 | 75.02% | **83.39%** | +8.37 | +534 / −16 | **1.58 s** | 1.60 s | 1.01× |
+| 3.10 | 6,252 | 75.50% | **82.49%** | +6.99 | +471 / −34 | **1.48 s** | 1.57 s | 1.06× |
+| 3.11 | 6,326 | 76.84% | **84.94%** | +8.09 | +559 / −47 | **1.34 s** | 1.40 s | 1.05× |
+| 3.12 | 6,324 | 74.54% | **80.49%** | +5.95 | +426 / −50 | **1.48 s** | 1.50 s | 1.01× |
+| 3.13 | 7,750 | 76.34% | **84.27%** | +7.94 | +657 / −42 | **1.42 s** | 1.49 s | 1.05× |
+| 3.14 | 6,906 | 71.52% | **80.76%** | +9.24 | +667 / −29 | **1.68 s** | 1.83 s | 1.08× |
+| 3.15 | 7,069 | 71.89% | **81.28%** | +9.39 | +693 / −29 | **1.71 s** | 1.82 s | 1.07× |
+| **PyLingual v1 eval** | 49,591 | 85.96% | **90.18%** | +4.22 | +2,262 / −170 | 1.01 s | **1.01 s** | 1.00× |
+| **PyLingual v2 eval** | 15,528 | 36.57% | **56.94%** | +20.36 | +3,268 / −106 | **3.28 s** | 3.50 s | 1.07× |
+| **All** | 65,119 | 74.19% | **82.25%** | +8.07 | +5,530 / −276 | **1.55 s** | 1.60 s | 1.03× |
+
+Files whose output fails to compile drop from 8,271 to 3,928. By the first compile error, block structure errors
+(unexpected indents, orphaned `except`/`else`/`elif`/`finally`, `break`/`continue` outside a loop) go from 4,339 files
+to 6; the rest come from statement lines and are about the same in both arms.
+
 ## Demo
 
 ![demo gif](demo.gif)

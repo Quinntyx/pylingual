@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 388" width="860" height="388" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">
+<circle cx="58" cy="14" r="5" fill="#eb6834"/><text x="68" y="18" fill="#101418">dev (control flow templates)</text>
+<circle cx="258" cy="14" r="5" fill="#2a78d6"/><text x="268" y="18" fill="#101418">control-flow-model</text>
+<text x="52.0" y="44" fill="#101418" font-weight="600">Files equivalent</text>
+<line x1="52.0" x2="52.0" y1="54" y2="354" stroke="#e4e6e9"/>
+<text x="52.0" y="370" fill="#4a5058" text-anchor="middle">70%</text>
+<line x1="162.7" x2="162.7" y1="54" y2="354" stroke="#e4e6e9"/>
+<text x="162.7" y="370" fill="#4a5058" text-anchor="middle">75%</text>
+<line x1="273.3" x2="273.3" y1="54" y2="354" stroke="#e4e6e9"/>
+<text x="273.3" y="370" fill="#4a5058" text-anchor="middle">80%</text>
+<line x1="384.0" x2="384.0" y1="54" y2="354" stroke="#e4e6e9"/>
+<text x="384.0" y="370" fill="#4a5058" text-anchor="middle">85%</text>
+<text x="42" y="75.0" fill="#101418" text-anchor="end">3.6</text>
+<line x1="180.2" x2="364.8" y1="71.0" y2="71.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="180.2" cy="71.0" r="5" fill="#eb6834"/>
+<circle cx="364.8" cy="71.0" r="5" fill="#2a78d6"/>
+<text x="373.8" y="75.0" fill="#101418">84.1%</text>
+<text x="42" y="101.0" fill="#101418" text-anchor="end">3.7</text>
+<line x1="128.4" x2="308.8" y1="97.0" y2="97.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="128.4" cy="97.0" r="5" fill="#eb6834"/>
+<circle cx="308.8" cy="97.0" r="5" fill="#2a78d6"/>
+<text x="317.8" y="101.0" fill="#101418">81.6%</text>
+<text x="42" y="127.0" fill="#101418" text-anchor="end">3.8</text>
+<line x1="76.5" x2="253.6" y1="123.0" y2="123.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="76.5" cy="123.0" r="5" fill="#eb6834"/>
+<circle cx="253.6" cy="123.0" r="5" fill="#2a78d6"/>
+<text x="262.6" y="127.0" fill="#101418">79.1%</text>
+<text x="42" y="153.0" fill="#101418" text-anchor="end">3.9</text>
+<line x1="163.0" x2="348.3" y1="149.0" y2="149.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="163.0" cy="149.0" r="5" fill="#eb6834"/>
+<circle cx="348.3" cy="149.0" r="5" fill="#2a78d6"/>
+<text x="357.3" y="153.0" fill="#101418">83.4%</text>
+<text x="42" y="179.0" fill="#101418" text-anchor="end">3.10</text>
+<line x1="173.6" x2="328.3" y1="175.0" y2="175.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="173.6" cy="175.0" r="5" fill="#eb6834"/>
+<circle cx="328.3" cy="175.0" r="5" fill="#2a78d6"/>
+<text x="337.3" y="179.0" fill="#101418">82.5%</text>
+<text x="42" y="205.0" fill="#101418" text-anchor="end">3.11</text>
+<line x1="203.4" x2="382.6" y1="201.0" y2="201.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="203.4" cy="201.0" r="5" fill="#eb6834"/>
+<circle cx="382.6" cy="201.0" r="5" fill="#2a78d6"/>
+<text x="391.6" y="205.0" fill="#101418">84.9%</text>
+<text x="42" y="231.0" fill="#101418" text-anchor="end">3.12</text>
+<line x1="152.5" x2="284.1" y1="227.0" y2="227.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="152.5" cy="227.0" r="5" fill="#eb6834"/>
+<circle cx="284.1" cy="227.0" r="5" fill="#2a78d6"/>
+<text x="293.1" y="231.0" fill="#101418">80.5%</text>
+<text x="42" y="257.0" fill="#101418" text-anchor="end">3.13</text>
+<line x1="192.2" x2="367.9" y1="253.0" y2="253.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="192.2" cy="253.0" r="5" fill="#eb6834"/>
+<circle cx="367.9" cy="253.0" r="5" fill="#2a78d6"/>
+<text x="376.9" y="257.0" fill="#101418">84.3%</text>
+<text x="42" y="283.0" fill="#101418" text-anchor="end">3.14</text>
+<line x1="85.6" x2="290.1" y1="279.0" y2="279.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="85.6" cy="279.0" r="5" fill="#eb6834"/>
+<circle cx="290.1" cy="279.0" r="5" fill="#2a78d6"/>
+<text x="299.1" y="283.0" fill="#101418">80.8%</text>
+<text x="42" y="309.0" fill="#101418" text-anchor="end">3.15</text>
+<line x1="93.9" x2="301.8" y1="305.0" y2="305.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="93.9" cy="305.0" r="5" fill="#eb6834"/>
+<circle cx="301.8" cy="305.0" r="5" fill="#2a78d6"/>
+<text x="310.8" y="309.0" fill="#101418">81.3%</text>
+<text x="42" y="335.0" fill="#101418" text-anchor="end" font-weight="600">All</text>
+<line x1="144.6" x2="323.2" y1="331.0" y2="331.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="144.6" cy="331.0" r="5" fill="#eb6834"/>
+<circle cx="323.2" cy="331.0" r="5" fill="#2a78d6"/>
+<text x="332.2" y="335.0" fill="#101418" font-weight="600">82.3%</text>
+<text x="468.0" y="44" fill="#101418" font-weight="600">Time per file</text>
+<line x1="468.0" x2="468.0" y1="54" y2="354" stroke="#e4e6e9"/>
+<text x="468.0" y="370" fill="#4a5058" text-anchor="middle">0 s</text>
+<line x1="551.0" x2="551.0" y1="54" y2="354" stroke="#e4e6e9"/>
+<text x="551.0" y="370" fill="#4a5058" text-anchor="middle">0.5 s</text>
+<line x1="634.0" x2="634.0" y1="54" y2="354" stroke="#e4e6e9"/>
+<text x="634.0" y="370" fill="#4a5058" text-anchor="middle">1 s</text>
+<line x1="717.0" x2="717.0" y1="54" y2="354" stroke="#e4e6e9"/>
+<text x="717.0" y="370" fill="#4a5058" text-anchor="middle">1.5 s</text>
+<line x1="800.0" x2="800.0" y1="54" y2="354" stroke="#e4e6e9"/>
+<text x="800.0" y="370" fill="#4a5058" text-anchor="middle">2 s</text>
+<line x1="743.9" x2="739.9" y1="71.0" y2="71.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="743.9" cy="71.0" r="5" fill="#eb6834"/>
+<circle cx="739.9" cy="71.0" r="5" fill="#2a78d6"/>
+<text x="752.9" y="75.0" fill="#101418">1.64 s</text>
+<line x1="726.5" x2="723.5" y1="97.0" y2="97.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="726.5" cy="97.0" r="5" fill="#eb6834"/>
+<circle cx="723.5" cy="97.0" r="5" fill="#2a78d6"/>
+<text x="735.5" y="101.0" fill="#101418">1.54 s</text>
+<line x1="730.9" x2="736.1" y1="123.0" y2="123.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="730.9" cy="123.0" r="5" fill="#eb6834"/>
+<circle cx="736.1" cy="123.0" r="5" fill="#2a78d6"/>
+<text x="745.1" y="127.0" fill="#101418">1.62 s</text>
+<line x1="730.6" x2="733.3" y1="149.0" y2="149.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="730.6" cy="149.0" r="5" fill="#eb6834"/>
+<circle cx="733.3" cy="149.0" r="5" fill="#2a78d6"/>
+<text x="742.3" y="153.0" fill="#101418">1.60 s</text>
+<line x1="712.9" x2="728.5" y1="175.0" y2="175.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="712.9" cy="175.0" r="5" fill="#eb6834"/>
+<circle cx="728.5" cy="175.0" r="5" fill="#2a78d6"/>
+<text x="737.5" y="179.0" fill="#101418">1.57 s</text>
+<line x1="690.4" x2="700.8" y1="201.0" y2="201.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="690.4" cy="201.0" r="5" fill="#eb6834"/>
+<circle cx="700.8" cy="201.0" r="5" fill="#2a78d6"/>
+<text x="709.8" y="205.0" fill="#101418">1.40 s</text>
+<line x1="714.1" x2="716.7" y1="227.0" y2="227.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="714.1" cy="227.0" r="5" fill="#eb6834"/>
+<circle cx="716.7" cy="227.0" r="5" fill="#2a78d6"/>
+<text x="725.7" y="231.0" fill="#101418">1.50 s</text>
+<line x1="703.9" x2="715.1" y1="253.0" y2="253.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="703.9" cy="253.0" r="5" fill="#eb6834"/>
+<circle cx="715.1" cy="253.0" r="5" fill="#2a78d6"/>
+<text x="724.1" y="257.0" fill="#101418">1.49 s</text>
+<line x1="747.5" x2="771.2" y1="279.0" y2="279.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="747.5" cy="279.0" r="5" fill="#eb6834"/>
+<circle cx="771.2" cy="279.0" r="5" fill="#2a78d6"/>
+<text x="780.2" y="283.0" fill="#101418">1.83 s</text>
+<line x1="752.1" x2="770.6" y1="305.0" y2="305.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="752.1" cy="305.0" r="5" fill="#eb6834"/>
+<circle cx="770.6" cy="305.0" r="5" fill="#2a78d6"/>
+<text x="779.6" y="309.0" fill="#101418">1.82 s</text>
+<line x1="725.2" x2="733.9" y1="331.0" y2="331.0" stroke="#c4c8cd" stroke-width="2"/>
+<circle cx="725.2" cy="331.0" r="5" fill="#eb6834"/>
+<circle cx="733.9" cy="331.0" r="5" fill="#2a78d6"/>
+<text x="742.9" y="335.0" fill="#101418" font-weight="600">1.60 s</text>
+</svg>
